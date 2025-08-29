@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Javascript Chain Explorer</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+    h1 { color: #333; }
+    .block { background: #fff; padding: 10px; margin-bottom: 10px; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+    .hash { font-family: monospace; color: #007acc; }
+  </style>
+</head>
+<body>
+  <h1>🧱 Javascript Chain Explorer</h1>
+  <div id="blocks">Loading blocks...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+    import { getFirestore, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const blocksRef = collection(db, "blocks");
+    const q = query(blocksRef, orderBy("timestamp", "desc"));
+
+    const blocksDiv = document.getElementById("blocks");
+
+    onSnapshot(q, (snapshot) => {
+      blocksDiv.innerHTML = "";
+      snapshot.forEach(doc => {
+        const block = doc.data();
+        blocksDiv.innerHTML += `
+          <div class="block">
+            <div><strong>Height:</strong> ${block.height}</div>
+            <div><strong>Hash:</strong> <span class="hash">${block.hash}</span></div>
+            <div><strong>Miner:</strong> ${block.miner}</div>
+            <div><strong>Time:</strong> ${new Date(block.timestamp).toLocaleString()}</div>
+          </div>
+        `;
+      });
+    });
+  </script>
+</body>
+</html>
