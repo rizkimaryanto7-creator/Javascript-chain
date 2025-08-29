@@ -1,0 +1,11 @@
+<h2>Detail Blok #<%= block.index %></h2>
+<p><strong>Hash:</strong> <%= block.hash %></p>
+<p><strong>Previous:</strong> <%= block.previousHash %></p>
+<p><strong>Nonce:</strong> <%= block.nonce %></p>
+<p><strong>Timestamp:</strong> <%= new Date(block.timestamp).toLocaleString() %></p>
+<h3>Transaksi:</h3>
+<ul>
+  <% block.transactions.forEach(tx => { %>
+    <li><%= tx.from %> → <%= tx.to %> : <%= tx.amount %> JAVA</li>
+  <% }) %>
+</ul>

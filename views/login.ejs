@@ -1,0 +1,11 @@
+<h2>Pilih Wallet</h2>
+<form method="GET" action="/send">
+  <select name="from">
+    <% walletList.forEach(wallet => { %>
+      <option value="<%= wallet.name %>"><%= wallet.name %></option>
+    <% }) %>
+  </select>
+  <input type="text" name="to" placeholder="Public key tujuan" required>
+  <input type="number" name="amount" placeholder="Jumlah JAVA" required>
+  <button type="submit">Kirim</button>
+</form>

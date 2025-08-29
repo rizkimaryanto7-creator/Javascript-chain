@@ -1,0 +1,9 @@
+<h2>Cek Saldo Wallet</h2>
+<form method="GET" action="/balance">
+  <input type="text" name="publicKey" placeholder="Public key wallet" required>
+  <button type="submit">Cek Saldo</button>
+</form>
+
+<% if (balance !== undefined) { %>
+  <p>Saldo: <%= balance %> JAVA</p>
+<% } %>

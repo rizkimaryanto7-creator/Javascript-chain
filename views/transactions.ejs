@@ -1,0 +1,7 @@
+<h2>Semua Transaksi</h2>
+<ul>
+  <% chain.forEach(block => {
+    block.transactions.forEach(tx => { %>
+      <li>Block #<%= block.index %>: <%= tx.from %> → <%= tx.to %> : <%= tx.amount %> JAVA</li>
+  <% }) }) %>
+</ul>
