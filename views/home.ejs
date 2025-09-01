@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JavaScript-chain</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #121212;
+      color: #f1f1f1;
+    }
+    .hero {
+      background: linear-gradient(to right, #4f46e5, #9333ea);
+      padding: 3rem;
+      text-align: center;
+      color: white;
+    }
+    .btn-custom {
+      margin: 0.5rem;
+    }
+    .feature-card {
+      background-color: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    footer {
+      border-top: 1px solid #333;
+      padding: 1rem;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <h1 class="display-4 fw-bold">JavaScript-chain</h1>
+    <p class="lead">Blockchain modular yang bisa ditambang langsung dari HP — ringan, terbuka, dan global.</p>
+    <div class="d-flex justify-content-center flex-wrap mt-3">
+      <a href="/miner" class="btn btn-light btn-custom">🔧 Mulai Menambang</a>
+      <a href="/explorer" class="btn btn-outline-light btn-custom">🌐 Lihat Explorer</a>
+      <a href="/wallets" class="btn btn-outline-info btn-custom">🧠 Cek Wallet</a>
+      <a href="/send" class="btn btn-outline-success btn-custom">💸 Kirim Transaksi</a>
+      <a href="/balance" class="btn btn-outline-warning btn-custom">💰 Cek Saldo</a>
+      <a href="/peers" class="btn btn-outline-secondary btn-custom">🌐 Peer Nodes</a>
+    </div>
+  </div>
+
+  <div class="container py-5">
+    <section class="mb-5 text-center">
+      <h2 class="mb-3">Tentang JavaScript-chain</h2>
+      <p>JavaScript-chain adalah blockchain Layer 1 yang dirancang untuk inklusivitas dan aksesibilitas. Dibangun dengan modularitas tinggi, bisa dijalankan dan ditambang langsung dari perangkat mobile seperti Termux, APK, atau UserLAnd.</p>
+    </section>
+
+    <section class="mb-5">
+      <h2 class="text-center mb-3">Visi & Misi</h2>
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <p><strong>Visi:</strong> Membangun ekosistem blockchain yang ringan, terbuka, dan bisa diakses siapa saja dari perangkat apapun.</p>
+          <ul>
+            <li>Desentralisasi nyata dari mobile</li>
+            <li>Developer empowerment melalui modularitas</li>
+            <li>Ekosistem terbuka untuk plugin, smart contract, dan governance</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-5">
+      <h2 class="text-center mb-4">Fitur Utama</h2>
+      <div class="row">
+        <div class="col-md-4">
+          <div class="feature-card">
+            <h5>🔗 Modular Node</h5>
+            <p>Bisa di-extend dan di-audit oleh developer global.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="feature-card">
+            <h5>📱 Mobile Mining</h5>
+            <p>Termux, APK, dan UserLAnd ready untuk penambangan ringan.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="feature-card">
+            <h5>🌐 Explorer Publik</h5>
+            <p>Transparansi blok dan transaksi secara real-time.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="feature-card">
+            <h5>🧠 Wallet Management</h5>
+            <p>Kelola address, saldo, dan transaksi dengan aman.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="feature-card">
+            <h5>🛠️ Plugin System</h5>
+            <p>Siap untuk smart contract dan governance komunitas.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-5 text-center">
+      <h2 class="mb-3">Untuk Developer</h2>
+      <p>JavaScript-chain sepenuhnya open-source dan siap dikembangkan bersama. Bergabunglah di komunitas kami dan bantu bangun masa depan blockchain yang inklusif.</p>
+      <div class="d-flex justify-content-center flex-wrap">
+        <a href="https://github.com/jscript-chain" class="btn btn-outline-light btn-custom">📦 GitHub Repo</a>
+        <a href="/docs" class="btn btn-outline-secondary btn-custom">📚 Dokumentasi & SDK</a>
+        <a href="/contribute" class="btn btn-outline-success btn-custom">🤝 Cara Kontribusi</a>
+      </div>
+    </section>
+  </div>
+
+  <footer class="bg-dark text-light">
+    <p>&copy; 2025 JavaScript-chain. Dibangun dengan semangat desentralisasi dari Gunungpati.</p>
+    <p>Versi chain: <%= chainVersion %> | Hash terakhir: <%= latestHash %></p>
+  </footer>
+
+</body>
+</html>

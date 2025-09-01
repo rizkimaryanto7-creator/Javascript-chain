@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "block",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "miner", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

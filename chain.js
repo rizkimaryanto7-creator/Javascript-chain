@@ -98,6 +98,20 @@ class Blockchain {
     return reward >= this.minReward ? reward : this.minReward;
   }
 
+  adjustDifficulty() {
+    const targetTime = 120000; // 2 menit
+    const lastBlock = this.getLatestBlock();
+    const prevBlock = this.chain[this.chain.length - 2];
+    if (!prevBlock) return;
+
+    const actualTime = lastBlock.timestamp - prevBlock.timestamp;
+
+    if (actualTime < targetTime / 2) this.difficulty++;
+    else if (actualTime > targetTime * 2 && this.difficulty > 1) this.difficulty--;
+
+    console.log(`⛏️ Difficulty adjusted to ${this.difficulty} (block time: ${Math.floor(actualTime / 1000)}s)`);
+  }
+
   createWallet(name, walletObj) {
     this.wallets[name] = walletObj;
   }
@@ -187,6 +201,7 @@ class Blockchain {
     const block = new Block(this.chain.length, Date.now(), workTxs, this.getLatestBlock().hash);
     block.mineBlock(this.difficulty);
     const ok = this.addBlockFromWorker(workTxs, block.nonce, block.hash, minerWallet.publicKey);
+    if (ok) this.adjustDifficulty();
     return ok;
   }
 

@@ -1,4 +1,4 @@
-// node.js — full integrated version
+// node.js — Bagian 1: Setup & Inisialisasi
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -7,7 +7,6 @@ const { Worker } = require('worker_threads');
 const crypto = require('crypto');
 const Blockchain = require('./chain');
 
-// Load config.json
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 const DEFAULT_CONFIG = {
   difficulty: 4,
@@ -15,7 +14,8 @@ const DEFAULT_CONFIG = {
   premineRatio: 0.05,
   baseReward: 100,
   minReward: 6.25,
-  halvingIntervalBlocks: 210000
+  halvingIntervalBlocks: 210000,
+  targetBlockTime: 120
 };
 function loadConfig() {
   try {
@@ -30,14 +30,12 @@ function loadConfig() {
 }
 const CFG = loadConfig();
 
-// Elliptic key support
 let ec;
 try {
   const EC = require('elliptic').ec;
   ec = new EC('secp256k1');
 } catch (_) {}
 
-// Wallet generator
 function makeWallet() {
   const privateKey = crypto.randomBytes(32).toString('hex');
   const publicKey = ec
@@ -46,21 +44,16 @@ function makeWallet() {
   return { publicKey, privateKey };
 }
 
-// Load wallet Dev dari file
 const devWallet = JSON.parse(fs.readFileSync('dev_wallet.json', 'utf8'));
-
-// Inisialisasi blockchain dengan public key Dev
 const jsChain = new Blockchain(devWallet.publicKey, CFG);
-
-// Log wallet Dev ke terminal
 console.log('🔐 Dev Wallet Public Key:', devWallet.publicKey);
-console.log('🔑 Dev Wallet Private Key:', devWallet.privateKey);
 
-// Sample wallets
-const rizki = makeWallet();
-const miner1 = makeWallet();
-jsChain.createWallet('rizki', rizki);
-jsChain.createWallet('miner1', miner1);
+function formatHashrate(h) {
+  if (h >= 1e9) return (h / 1e9).toFixed(2) + ' GH/s';
+  if (h >= 1e6) return (h / 1e6).toFixed(2) + ' MH/s';
+  if (h >= 1e3) return (h / 1e3).toFixed(2) + ' KH/s';
+  return h + ' H/s';
+}
 
 const minerController = {
   isMining: false,
@@ -68,19 +61,20 @@ const minerController = {
   perCore: {},
   bestHash: {},
   totalHashrate: 0,
+  activeMiners: [],
   minerAddress: null,
   startedAt: null,
   lastBlockMinedAt: null,
   currentWorkTxs: null
 };
-
 function startWorkers(minerAddress) {
   if (minerController.isMining) return;
   minerController.isMining = true;
   minerController.minerAddress = minerAddress;
   minerController.startedAt = Date.now();
+  minerController.activeMiners.push(minerAddress);
 
-  let cpuCount = os.cpus().length || 8;
+  const cpuCount = os.cpus().length || 8;
   const workTxs = jsChain.buildWorkTransactions(minerAddress);
   if (!workTxs) return;
 
@@ -107,7 +101,10 @@ function startWorkers(minerAddress) {
         minerController.lastBlockMinedAt = new Date().toISOString();
         stopWorkers();
         const ok = jsChain.addBlockFromWorker(minerController.currentWorkTxs, msg.nonce, msg.hash, minerAddress);
-        if (ok) saveChainState();
+        if (ok) {
+          saveChainState();
+          setTimeout(() => startWorkers(minerAddress), 100); // auto-loop
+        }
       } else {
         minerController.perCore[msg.core] = msg.hashrate;
         minerController.bestHash[msg.core] = msg.bestHash;
@@ -142,52 +139,30 @@ app.set('views', path.join(__dirname, 'views'));
 
 app.get('/wallets', (req, res) => {
   res.render('wallets', {
-    wallets: Object.entries(jsChain.wallets).map(([name, w]) => ({ name, publicKey: w.publicKey }))
+    wallets: Object.entries(jsChain.wallets).map(([name, w]) => ({
+      name,
+      publicKey: w.publicKey
+    }))
   });
 });
 
 app.post('/wallets/create', (req, res) => {
-  const { name } = req.body;
-  if (!name || jsChain.wallets[name]) return res.status(400).send('Invalid or duplicate name');
+  let { name } = req.body;
+  if (!name) return res.status(400).send('Invalid name');
+  let finalName = name;
+  let counter = 1;
+  while (jsChain.wallets[finalName]) {
+    finalName = `${name}${counter++}`;
+  }
   const wallet = makeWallet();
-  jsChain.createWallet(name, wallet);
-  res.redirect(`/wallets/${encodeURIComponent(name)}`);
+  jsChain.createWallet(finalName, wallet);
+  res.redirect(`/wallets/${encodeURIComponent(finalName)}`);
 });
 
 app.get('/wallets/:name', (req, res) => {
   const w = jsChain.wallets[req.params.name];
   if (!w) return res.status(404).send('Wallet not found');
   res.render('wallet_detail', { name: req.params.name, publicKey: w.publicKey });
-});
-
-app.get('/wallets/:name/export', (req, res) => {
-  const w = jsChain.wallets[req.params.name];
-  if (!w) return res.status(404).send('Wallet not found');
-  const data = JSON.stringify({ name: req.params.name, publicKey: w.publicKey, privateKey: w.privateKey }, null, 2);
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', `attachment; filename="${req.params.name}_wallet.json"`);
-  res.send(data);
-});
-
-app.post('/wallets/import', (req, res) => {
-  const { name, walletJson } = req.body;
-  if (!name || !walletJson || jsChain.wallets[name]) return res.status(400).send('Invalid input');
-  try {
-    const obj = JSON.parse(walletJson);
-    if (!obj.publicKey || !obj.privateKey) return res.status(400).send('Invalid wallet JSON');
-    jsChain.createWallet(name, { publicKey: obj.publicKey, privateKey: obj.privateKey });
-    res.redirect(`/wallets/${encodeURIComponent(name)}`);
-  } catch {
-    res.status(400).send('Invalid JSON');
-  }
-});
-
-app.get('/api/balance/:address', (req, res) => {
-  res.json({ address: req.params.address, balance: jsChain.getBalance(req.params.address) });
-});
-
-app.get('/api/history/:address', (req, res) => {
-  res.json({ address: req.params.address, transactions: jsChain.getTransactionsByWallet(req.params.address) });
 });
 
 app.post('/api/transfer', (req, res) => {
@@ -307,18 +282,19 @@ app.post('/mine', (req, res) => {
   }
 });
 
+// Mining stats
 app.get('/mining-stats', (req, res) => {
   res.json({
     height: jsChain.chain.length - 1,
     difficulty: jsChain.difficulty,
     reward: jsChain.getCurrentReward(),
-    totalHashrate: minerController.totalHashrate || 0,
-    peers: [],
+    totalHashrate: formatHashrate(minerController.totalHashrate || 0),
     pendingTxCount: jsChain.pendingTransactions.length,
     perCore: minerController.perCore || {},
     bestHash: minerController.bestHash || {},
     lastBlockMinedAt: minerController.lastBlockMinedAt || null,
-    startedAt: minerController.startedAt || null
+    startedAt: minerController.startedAt || null,
+    miners: minerController.activeMiners || []
   });
 });
 
@@ -341,11 +317,31 @@ app.get('/backup-list', (req, res) => {
   res.json({ backups: files });
 });
 
-// Root
-app.get('/', (req, res) => {
-  res.send('🟢 JS-Chain Node running. Visit /miner or /wallets or /explorer');
+// Info page
+app.get('/about', (req, res) => {
+  res.render('about', {
+    title: 'Tentang JS-Chain',
+    description: 'JS-Chain adalah blockchain modular berbasis JavaScript yang bisa dijalankan dari HP, Termux, atau server ringan.',
+    vision: 'Membuka jalur digital yang scalable untuk komunitas global.',
+    mission: [
+      'Blockchain modular yang developer-friendly',
+      'Mining dan explorer langsung dari perangkat mobile',
+      'Integrasi domain dan tunnel untuk branding digital'
+    ],
+    links: {
+      explorer: 'https://donated-translation-pretty-paintings.trycloudflare.com/Explorer',
+      wallet: 'https://donated-translation-pretty-paintings.trycloudflare.com/wallets',
+      miner: 'https://donated-translation-pretty-paintings.trycloudflare.com/miner'
+    }
+  });
 });
 
+// Root
+app.get('/', (req, res) => {
+  res.send('🟢 JS-Chain Node running. Visit /explorer, /wallets, /miner, or /about');
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🟢 Node running at http://localhost:${PORT}`);
