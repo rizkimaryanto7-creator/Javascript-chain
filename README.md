@@ -7,8 +7,8 @@ Model beta dari blockchain modular yang bisa ditambang dari HP, Termux, atau APK
 
 [📘 Dokumentasi](docs.md) | [💡 Kontribusi](CONTRIBUTING.md)
 
-#link to Explorers# : https://donated-translation-pretty-paintings.trycloudflare.com/Explorer
+# link to Explorers # : https://donated-translation-pretty-paintings.trycloudflare.com/Explorer
 
-#link to wallet# : https://donated-translation-pretty-paintings.trycloudflare.com/wallets 
+# link to wallet # : https://donated-translation-pretty-paintings.trycloudflare.com/wallets 
 
-#link to miner# : https://donated-translation-pretty-paintings.trycloudflare.com/miner
+# link to miner # : https://donated-translation-pretty-paintings.trycloudflare.com/miner
