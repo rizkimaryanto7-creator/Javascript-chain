@@ -54,17 +54,17 @@ guide :
 ```bash
 git clone https://github.com/rizkimaryanto7-creator/Javascript-chain.git
 
-## 2. Install Dependencies
+# 2. Install Dependencies
 `bash
 npm install
 `
 
-## 3. Jalankan Node Local
+# 3. Jalankan Node Local
 `bash
 npm run dev
 `
 
-## 4. Struktur Modular
+# 4. Struktur Modular
 - node.js : start blockchain (Genesis)
 - remove chain.js : Genesis ( remove )
 - wallet.js: Command center wallet
@@ -72,20 +72,20 @@ npm run dev
 - explorer.js: Query chain
 - governance.js: Voting & plugin loader
 
-## 5. Plugin & Ekstensi
+# 5. Plugin & Ekstensi
 Fork bisa menambahkan:
 - Plugin miner custom
 - Governance rules
 - Firestore sync
 - QR code & polling
 
-## 6. Kontribusi
+# 6. Kontribusi
 Buat branch baru:
 `bash
 git checkout -b fitur-anda
 `
 pull & request.
 
-## 7. Backup & Recovery
+# 7. Backup & Recovery
 Gunakan chain.json dan wallet-backup.json untuk recovery multi-device.
 .
