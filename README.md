@@ -88,4 +88,4 @@ pull & request.
 
 7. Backup & Recovery
 Gunakan chain.json dan wallet-backup.json untuk recovery multi-device.
-`
+.
