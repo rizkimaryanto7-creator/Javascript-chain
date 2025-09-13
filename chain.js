@@ -99,13 +99,12 @@ class Blockchain {
   }
 
   adjustDifficulty() {
-    const targetTime = 120000; // 2 menit
+    const targetTime = 120000;
     const lastBlock = this.getLatestBlock();
     const prevBlock = this.chain[this.chain.length - 2];
     if (!prevBlock) return;
 
     const actualTime = lastBlock.timestamp - prevBlock.timestamp;
-
     if (actualTime < targetTime / 2) this.difficulty++;
     else if (actualTime > targetTime * 2 && this.difficulty > 1) this.difficulty--;
 
@@ -148,21 +147,44 @@ class Blockchain {
   createTransaction(fromName, toPublicKey, amount) {
     const sender = this.wallets[fromName];
     if (!sender || amount <= 0 || this.getBalance(sender.publicKey) < amount) return;
-    const payload = { from: sender.publicKey, to: toPublicKey, amount };
+    const payload = {
+      from: sender.publicKey,
+      to: toPublicKey,
+      amount,
+      timestamp: Date.now()
+    };
     payload.signature = signTransaction(sender.privateKey, payload);
     this.pendingTransactions.push(payload);
   }
 
   buildWorkTransactions(minerAddress) {
     const validTxs = [];
+    const failedTxs = [];
+
+    this.pendingTransactions.sort((a, b) => a.timestamp - b.timestamp);
+
     for (const tx of this.pendingTransactions) {
-      if (tx.from === 'SYSTEM' || verifySignature(tx.from, { from: tx.from, to: tx.to, amount: tx.amount }, tx.signature)) {
+      const isValid = tx.from === 'SYSTEM' || verifySignature(tx.from, {
+        from: tx.from,
+        to: tx.to,
+        amount: tx.amount,
+        timestamp: tx.timestamp
+      }, tx.signature);
+
+      if (isValid) {
         validTxs.push(tx);
+      } else {
+        console.warn(`⚠️ Invalid transaction skipped:`, tx);
+        failedTxs.push(tx);
       }
     }
+
     const reward = this.getCurrentReward(this.chain.length);
     if (this.minedCoins + reward > this.totalSupply) return null;
+
     validTxs.push({ from: 'SYSTEM', to: minerAddress, amount: reward });
+    this.pendingTransactions = failedTxs;
+
     return validTxs;
   }
 
@@ -180,7 +202,13 @@ class Blockchain {
     if (this.minedCoins + rewardTx.amount > this.totalSupply) return false;
 
     for (const tx of transactions) {
-      if (tx.from !== 'SYSTEM' && !verifySignature(tx.from, { from: tx.from, to: tx.to, amount: tx.amount }, tx.signature)) {
+      if (tx.from !== 'SYSTEM' && !verifySignature(tx.from, {
+        from: tx.from,
+        to: tx.to,
+        amount: tx.amount,
+        timestamp: tx.timestamp
+      }, tx.signature)) {
+        console.warn(`❌ Invalid signature in block. Skipping block.`);
         return false;
       }
     }
@@ -189,7 +217,6 @@ class Blockchain {
     newBlock.hash = expectedHash;
     this.chain.push(newBlock);
     this.minedCoins += rewardTx.amount;
-    this.pendingTransactions = [];
     return true;
   }
 
@@ -201,8 +228,16 @@ class Blockchain {
     const block = new Block(this.chain.length, Date.now(), workTxs, this.getLatestBlock().hash);
     block.mineBlock(this.difficulty);
     const ok = this.addBlockFromWorker(workTxs, block.nonce, block.hash, minerWallet.publicKey);
-    if (ok) this.adjustDifficulty();
-    return ok;
+    if (ok) {
+      this.adjustDifficulty();
+      this.pendingTransactions = this.pendingTransactions.filter(tx => !workTxs.includes(tx));
+      return block;
+    }
+    return null;
+  }
+
+  getPendingTransactions() {
+    return this.pendingTransactions;
   }
 
   getTransactionByHash(hash) {
@@ -229,6 +264,7 @@ class Blockchain {
               .digest('hex');
             if (blk.hash !== calc) throw new Error(`Hash mismatch at block ${i}`);
           }
+          console.log(`✅ Chain loaded with ${this.chain.length} blocks`);
         }
       }
     } catch (e) {

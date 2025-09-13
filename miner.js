@@ -26,33 +26,55 @@ console.log(`⛏️ Miner started`);
 console.log(`🔐 Wallet:\nPublic: ${minerWallet.publicKey}`);
 console.log(`💰 Initial balance: ${jsChain.getBalance(minerWallet.publicKey)}`);
 
-// ⛏️ Mining otomatis setiap 2 menit
-setInterval(async () => {
+// 🧠 Fungsi mining modular
+async function performMining() {
   try {
-    console.log(`⛏️ Mining triggered...`);
-    jsChain.minePendingTransactions('miner');
+    const pendingTx = jsChain.getPendingTransactions();
+    console.log(`📥 Pending transactions: ${pendingTx.length}`);
 
-    const latestBlock = jsChain.getLatestBlock();
+    if (pendingTx.length === 0) {
+      console.log(`⏸️ No transactions to mine. Skipping...`);
+      return;
+    }
+
+    console.log(`⛏️ Mining started...`);
+    const minedBlock = jsChain.minePendingTransactions('miner');
+
+    if (!minedBlock || minedBlock.transactions.length === 0) {
+      console.log(`⚠️ No transactions were mined. Possibly skipped due to validation.`);
+      return;
+    }
+
+    console.log(`✅ Block mined: #${minedBlock.height} | TX count: ${minedBlock.transactions.length}`);
 
     // 📤 Broadcast ke peers
-    await broadcastBlock(latestBlock);
-    console.log(`📤 Block broadcasted to peers`);
+    await broadcastBlock(minedBlock);
+    console.log(`📡 Block broadcasted to peers`);
 
-    // 🗂️ Push ke Firestore
+    // 🗂️ Simpan ke Firestore
     await db.collection("block").add({
-      height: latestBlock.height,
-      hash: latestBlock.hash,
-      miner: latestBlock.miner,
-      timestamp: latestBlock.timestamp,
-      difficulty: latestBlock.difficulty,
-      nonce: latestBlock.nonce,
-      previousHash: latestBlock.previousHash,
-      txCount: latestBlock.transactions.length
+      height: minedBlock.height,
+      hash: minedBlock.hash,
+      miner: minedBlock.miner,
+      timestamp: minedBlock.timestamp,
+      difficulty: minedBlock.difficulty,
+      nonce: minedBlock.nonce,
+      previousHash: minedBlock.previousHash,
+      txCount: minedBlock.transactions.length
     });
 
     console.log(`🗂️ Block saved to Firestore`);
     console.log(`💰 Miner balance: ${jsChain.getBalance(minerWallet.publicKey)}`);
+
+    // 🔄 Cek transaksi yang belum diproses
+    const remainingTx = jsChain.getPendingTransactions();
+    if (remainingTx.length > 0) {
+      console.log(`🔁 Remaining transactions: ${remainingTx.length}. Will retry in next cycle.`);
+    }
   } catch (err) {
     console.error(`❌ Mining error: ${err.message}`);
   }
-}, 2 * 60 * 1000);
+}
+
+// ⏱️ Trigger mining setiap 2 menit
+setInterval(performMining, 2 * 60 * 1000);

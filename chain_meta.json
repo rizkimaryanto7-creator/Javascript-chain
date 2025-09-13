@@ -1,9 +1,9 @@
 {
-  "height": 20,
+  "height": 4,
   "difficulty": 5,
   "totalSupply": 500000000,
-  "minedCoins": 25002000,
+  "minedCoins": 25000400,
   "reward": 100,
-  "lastBlockTime": 1756735926143,
-  "updatedAt": 1756735926145
+  "lastBlockTime": 1757309885260,
+  "updatedAt": 1757309885261
 }

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>JavaScript-chain</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: auto;
+      font-family: 'Segoe UI', sans-serif;
+      color: #fff;
+    }
+
+    body {
+      background: radial-gradient(ellipse at center, #0d0d1a 0%, #000000 100%);
+      background-size: cover;
+      animation: galaxyMove 60s linear infinite;
+    }
+
+    @keyframes galaxyMove {
+      0% { background-position: 0 0; }
+      100% { background-position: 1000px 1000px; }
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 60px auto;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0 0 20px rgba(0,255,255,0.2);
+    }
+
+    h1 {
+      font-size: 48px;
+      text-align: center;
+      color: #00ffff;
+      text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff, 0 0 30px #00ffff;
+      margin-bottom: 40px;
+    }
+
+    h2 {
+      color: #00bfff;
+      margin-top: 30px;
+    }
+
+    p, ul {
+      line-height: 1.6;
+      font-size: 16px;
+    }
+
+    ul {
+      padding-left: 20px;
+    }
+
+    .highlight {
+      background-color: rgba(0, 255, 255, 0.1);
+      padding: 10px;
+      border-left: 4px solid #00ffff;
+      margin: 20px 0;
+    }
+
+    a {
+      color: #00ffff;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>JavaScript-chain</h1>
+
+    <p><strong>JavaScript-chain</strong> adalah proyek blockchain modular yang dibangun untuk bisa diakses, ditambang, dan dikembangkan langsung dari perangkat mobile. Dirancang oleh Rizki, sistem ini mengutamakan transparansi, efisiensi, dan kemudahan onboarding komunitas global.</p>
+
+    <div class="highlight">
+      <p>✅ Mining langsung dari HP<br>
+         ✅ Wallet, explorer, dan miner dalam satu APK<br>
+         ✅ Open-source dan bisa diaudit publik<br>
+         ✅ Jalur SSH dan RPC endpoint untuk akses global</p>
+    </div>
+
+    <h2>Visi & Misi</h2>
+    <p>JavaScript-chain bertujuan menjadi blockchain ringan dan modular yang bisa diakses langsung dari perangkat mobile. Kami percaya bahwa teknologi desentralisasi harus bisa dijangkau siapa saja, di mana saja, tanpa batasan perangkat atau bandwidth.</p>
+
+    <h2>Fitur Teknologi</h2>
+    <ul>
+      <li>🔗 Mining langsung dari HP Android</li>
+      <li>📦 Modular chain: wallet, explorer, miner dalam satu sistem</li>
+      <li>🌐 RPC endpoint untuk integrasi wallet eksternal</li>
+      <li>🛡️ Validasi transaksi dan signature berbasis elliptic curve</li>
+      <li>📊 Panel monitoring via Firebase</li>
+      <li>📁 Backup & recovery otomatis untuk chain.json</li>
+    </ul>
+
+    <h2>Arsitektur Sistem</h2>
+    <ul>
+      <li><strong>Miner:</strong> Menambang blok dan memvalidasi transaksi</li>
+      <li><strong>Wallet:</strong> Mengelola kunci publik/pribadi dan saldo</li>
+      <li><strong>Explorer:</strong> Menampilkan blok, transaksi, dan histori wallet</li>
+      <li><strong>Node:</strong> Menyimpan chain dan menyebarkan blok ke peer</li>
+    </ul>
+
+    <h2>Roadmap</h2>
+    <ul>
+      <li>✅ Genesis block & mining loop stabil</li>
+      <li>✅ Integrasi Firebase & Firestore</li>
+      <li>🔜 APK release untuk wallet + miner</li>
+      <li>🔜 Plugin system untuk governance & reward pool</li>
+      <li>🔜 Explorer publik & dashboard komunitas</li>
+      <li>🔜 Integrasi domain & tunnel untuk branding digital</li>
+    </ul>
+
+    <h2>Kontribusi & Komunitas</h2>
+    <p>Proyek ini bersifat open-source. Kami mengundang developer, penambang, dan pengguna untuk ikut membangun ekosistem JavaScript-chain. Setiap kontribusi sangat berarti, baik dalam bentuk kode, ide, dokumentasi, atau testing.</p>
+
+    <p><strong>GitHub:</strong> <a href="#">(link repo kamu)</a><br>
+       <strong>Dokumentasi:</strong> <a href="#">(link docs)</a><br>
+       <strong>Komunitas:</strong> <a href="#">(Telegram / Discord / Forum)</a></p>
+
+    <h2>Ajakan Bergabung</h2>
+    <p>Jika kamu percaya bahwa blockchain harus bisa diakses siapa saja, dan ingin menjadi bagian dari ekosistem yang transparan dan mobile-friendly, JavaScript-chain adalah tempatnya. Mari kita bangun masa depan desentralisasi yang bisa dijalankan dari genggaman tangan.</p>
+  </div>
+</body>
+</html>
