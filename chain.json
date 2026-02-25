@@ -1,0 +1,107 @@
+[
+  {
+    "index": 0,
+    "timestamp": 1700000000000,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "0xeaed9bf95a9ef9ce73081a3a164e37a106af77f9",
+        "amount": 500000000,
+        "timestamp": 1700000000000
+      }
+    ],
+    "previousHash": "0",
+    "nonce": 0,
+    "hash": "GENESIS_BLOCK_DATA"
+  },
+  {
+    "index": 1,
+    "timestamp": 1771906809771,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "SYSTEM_NODE",
+        "amount": 10000,
+        "timestamp": 1771906809771
+      }
+    ],
+    "previousHash": "GENESIS_BLOCK_DATA",
+    "nonce": 14,
+    "hash": "093b1039f31e9f24675795f7963f1dfb41314bd5c500d850ea172c020cb4f10c"
+  },
+  {
+    "index": 2,
+    "timestamp": 1771906809813,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "SYSTEM_NODE",
+        "amount": 10000,
+        "timestamp": 1771906809813
+      }
+    ],
+    "previousHash": "093b1039f31e9f24675795f7963f1dfb41314bd5c500d850ea172c020cb4f10c",
+    "nonce": 12,
+    "hash": "0c0d6e490894852c97f9bbfe9a7368f4b6872ae66ae476f06d682943fe889be7"
+  },
+  {
+    "index": 3,
+    "timestamp": 1771906809836,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "SYSTEM_NODE",
+        "amount": 10000,
+        "timestamp": 1771906809836
+      }
+    ],
+    "previousHash": "0c0d6e490894852c97f9bbfe9a7368f4b6872ae66ae476f06d682943fe889be7",
+    "nonce": 226,
+    "hash": "00a89d52bd857a23bcf80925c6348b5bce8abe6cc80eed80495c7192c88bf182"
+  },
+  {
+    "index": 4,
+    "timestamp": 1771906809869,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "SYSTEM_NODE",
+        "amount": 10000,
+        "timestamp": 1771906809869
+      }
+    ],
+    "previousHash": "00a89d52bd857a23bcf80925c6348b5bce8abe6cc80eed80495c7192c88bf182",
+    "nonce": 9104,
+    "hash": "00072f64ff430dc445b452d9e1e1937f923f2e37594dbe2b493fbdab838bee09"
+  },
+  {
+    "index": 5,
+    "timestamp": 1771906810046,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "SYSTEM_NODE",
+        "amount": 10000,
+        "timestamp": 1771906810046
+      }
+    ],
+    "previousHash": "00072f64ff430dc445b452d9e1e1937f923f2e37594dbe2b493fbdab838bee09",
+    "nonce": 73097,
+    "hash": "0000307e5f907d2f6392f0cd9323e594ec7b219f12cf9ef4a0ae463925fe5083"
+  },
+  {
+    "index": 6,
+    "timestamp": 1771906810586,
+    "transactions": [
+      {
+        "from": "SYSTEM",
+        "to": "SYSTEM_NODE",
+        "amount": 10000,
+        "timestamp": 1771906810586
+      }
+    ],
+    "previousHash": "0000307e5f907d2f6392f0cd9323e594ec7b219f12cf9ef4a0ae463925fe5083",
+    "nonce": 656398,
+    "hash": "000000fdc7a2639b70b2cfe0731eceb33f270ef95926251c66e1b55f02598708"
+  }
+]

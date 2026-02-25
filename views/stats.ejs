@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Chain Stats — JSChain</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap & FontAwesome -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background: #f5f7fa; font-family: 'Inter', sans-serif; }
+    .navbar { background-color: #fff; border-bottom: 1px solid #ddd; }
+    h1, h4 { font-weight: 600; }
+    .card-stat { background: #fff; border: 1px solid #ddd; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); padding: 20px; text-align: center; }
+    .card-stat i { font-size: 2rem; margin-bottom: 10px; }
+    .card-stat h4 { margin-bottom: 5px; }
+    .card-stat p { font-size: 1.2rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light px-3">
+    <a class="navbar-brand fw-bold" href="/">⚡ JSChain Stats</a>
+    <div class="ms-auto">
+      <a class="btn btn-outline-info me-2" href="/miner">Miner</a>
+      <a class="btn btn-outline-dark me-2" href="/explorer">Explorer</a>
+      <a class="btn btn-outline-primary me-2" href="/wallets">Wallets</a>
+      <a class="btn btn-outline-danger" href="/logout">Logout</a>
+    </div>
+  </nav>
+
+  <div class="container my-5">
+    <h1 class="mb-4">📊 Blockchain Statistics</h1>
+
+    <div class="row g-4">
+      <div class="col-md-3">
+        <div class="card-stat">
+          <i class="fas fa-cube text-primary"></i>
+          <h4>Blocks</h4>
+          <p><%= stats.blocks %></p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card-stat">
+          <i class="fas fa-exchange-alt text-success"></i>
+          <h4>Transactions</h4>
+          <p><%= stats.transactions %></p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card-stat">
+          <i class="fas fa-tachometer-alt text-warning"></i>
+          <h4>Difficulty</h4>
+          <p><%= stats.difficulty %></p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card-stat">
+          <i class="fas fa-coins text-info"></i>
+          <h4>Total Supply</h4>
+          <p><%= stats.totalSupply %></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mt-4">
+      <div class="col-md-6">
+        <div class="card-stat">
+          <i class="fas fa-users text-secondary"></i>
+          <h4>Active Miners</h4>
+          <p><%= stats.miners %></p>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card-stat">
+          <i class="fas fa-clock text-danger"></i>
+          <h4>Last Block Time</h4>
+          <p><%= stats.lastBlockTime %></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <a class="btn btn-outline-primary" href="/explorer">
+        <i class="fas fa-search"></i> View Explorer
+      </a>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

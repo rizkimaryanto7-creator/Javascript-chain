@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Javascript Chain Explorer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { background: #121212; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 20px; }
+    .block { background: #1e1e1e; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 0 5px rgba(0,0,0,0.3); }
+    .hash { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; color: #0d6efd; }
+    nav a { margin-right: 10px; }
+    canvas { background: #1e1e1e; border-radius: 8px; padding: 10px; }
+    .muted { color: #bbb; }
+    .badge { margin-left: 6px; }
+    .sticky { position: sticky; top: 0; background: #121212; z-index: 10; padding: 10px 0; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="mb-4 sticky">
+      <a href="#/" class="btn btn-outline-light">Home</a>
+      <a href="#/wallets" class="btn btn-outline-info">Wallets</a>
+      <a href="#/miner" class="btn btn-outline-warning">Miner</a>
+      <span class="muted">Realtime explorer • v1.2</span>
+    </nav>
+
+    <div id="route-root">
+      <!-- Routes rendered here -->
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js";
+    import {
+      getFirestore, collection, query, orderBy, limit, startAfter, getDocs, onSnapshot, doc, getDoc, where
+    } from "https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js";
+
+    // --- Firebase init ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyD-1FmvoifQwiN9ShwQ7uRTWLzkmog3nWI",
+      authDomain: "javascript-chain.firebaseapp.com",
+      projectId: "javascript-chain",
+      storageBucket: "javascript-chain.firebasestorage.app",
+      messagingSenderId: "923289712912",
+      appId: "1:923289712912:web:4d0b84ec080552bc750d95",
+      measurementId: "G-07N3B72L5V"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // --- Utilities ---
+    const toMillis = (t) => (t?.toMillis ? t.toMillis() : t ?? 0);
+    const fmtDate = (t) => {
+      try { return new Date(t).toLocaleString(); } catch { return "N/A"; }
+    };
+    const safe = (v, fallback = "N/A") => (v ?? fallback);
+    const trunc = (v, n = 32) => (typeof v === "string" ? (v.length > n ? v.slice(0, n) + "…" : v) : "N/A");
+
+    // --- Chart instance (global, single) ---
+    let txChart = null;
+    const ensureChart = () => {
+      if (!txChart) {
+        txChart = new Chart(document.getElementById('growthChart'), {
+          type: 'bar',
+          data: {
+            labels: [],
+            datasets: [{
+              label: 'TX per Block',
+              data: [],
+              backgroundColor: '#0d6efd'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { ticks: { color: '#ccc' } },
+              y: { ticks: { color: '#ccc' }, beginAtZero: true }
+            }
+          }
+        });
+      }
+    };
+    const updateChart = (labels, data) => {
+      ensureChart();
+      txChart.data.labels = labels;
+      txChart.data.datasets[0].data = data;
+      txChart.update();
+    };
+
+    // --- Routes ---
+    const routes = {
+      "/": renderHome,
+      "/wallets": renderWallets,
+      "/miner": renderMiner
+    };
+    const root = document.getElementById("route-root");
+    window.addEventListener("hashchange", route);
+    rou0te(); // initial
+
+    function route() {
+      const hash = location.hash.replace("#", "") || "/";
+      const handler = routes[hash] || routes["/"];
+      handler();
+    }
+
+    // --- HOME: Blocks explorer ---
+    async function renderHome() {
+      root.innerHTML = `
+        <h1>🧱 Javascript Chain Explorer</h1>
+        <div class="toolbar mb-3">
+          <div class="input-group input-group-sm" style="max-width: 360px;">
+            <span class="input-group-text">Miner</span>
+            <input id="filterMiner" class="form-control" placeholder="e.g. miner-01">
+          </div>
+          <div class="input-group input-group-sm" style="max-width: 220px;">
+            <span class="input-group-text">Min TX</span>
+            <input id="filterTxMin" type="number" class="form-control" placeholder="0" min="0">
+          </div>
+          <button id="applyFilter" class="btn btn-sm btn-primary">Apply</button>
+          <button id="clearFilter" class="btn btn-sm btn-secondary">Clear</button>
+          <button id="toggleRealtime" class="btn btn-sm btn-outline-light">Realtime: ON</button>
+        </div>
+
+        <div class="grid-2 mb-3" style="min-height: 240px;">
+          <div style="height: 240px;">
+            <canvas id="growthChart"></canvas>
+          </div>
+          <div class="block">
+            <strong>Status:</strong> <span id="statusText">Connecting…</span>
+            <div class="mt-2">
+              <button id="btnPrev" class="btn btn-sm btn-outline-light" disabled>Prev</button>
+              <button id="btnNext" class="btn btn-sm btn-outline-light" disabled>Next</button>
+              <span class="muted" id="pageInfo"></span>
+            </div>
+            <div class="mt-2">
+              <span class="badge text-bg-info">Sorted: Newest first</span>
+              <span class="badge text-bg-dark">Pagination: 25 per page</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="blocks">Loading blocks…</div>
+      `;
+
+      // State
+      let realtimeOn = true;
+      let lastVisible = null;
+      let firstVisible = null;
+      let currentPage = 1;
+      const pageSize = 25;
+      let detachRealtime = null;
+
+      const filterMinerEl = document.getElementById("filterMiner");
+      const filterTxMinEl = document.getElementById("filterTxMin");
+      const applyFilterEl = document.getElementById("applyFilter");
+      const clearFilterEl = document.getElementById("clearFilter");
+      const toggleRealtimeEl = document.getElementById("toggleRealtime");
+      const statusText = document.getElementById("statusText");
+      const btnPrev = document.getElementById("btnPrev");
+      const btnNext = document.getElementById("btnNext");
+      const pageInfo = document.getElementById("pageInfo");
+      const blocksDiv = document.getElementById("blocks");
+
+      const blocksRef = collection(db, "block");
+
+      const buildQuery = async (direction = "desc", cursor = null) => {
+        // Filters are client-side for flexibility. For large datasets, switch to server-side where().
+        let baseQ = query(blocksRef, orderBy("timestamp", direction), limit(pageSize));
+        if (cursor) {
+          baseQ = query(blocksRef, orderBy("timestamp", direction), startAfter(cursor), limit(pageSize));
+        }
+        return baseQ;
+      };
+
+      const renderBlocks = (docs) => {
+        const frag = document.createDocumentFragment();
+        const labels = [];
+        const txCounts = [];
+
+        if (!docs.length) {
+          blocksDiv.innerHTML = `<div class="block">No blocks yet.</div>`;
+          updateChart([], []);
+          return;
+        }
+
+        docs.forEach(d => {
+          const block = d.data();
+          const height = safe(block.height);
+          const hash = trunc(block.hash, 48);
+          const miner = safe(block.miner, "Unknown");
+          const ts = toMillis(block.timestamp);
+          const txCount = block.txCount ?? 0;
+
+          labels.push(height);
+          txCounts.push(txCount);
+
+          const el = document.createElement("div");
+          el.className = "block";
+          el.innerHTML = `
+            <div><strong>Height:</strong> ${height}</div>
+            <div><strong>Hash:</strong> <span class="hash">${hash}</span></div>
+            <div><strong>Miner:</strong> ${miner}</div>
+            <div><strong>TX:</strong> ${txCount}</div>
+            <div><strong>Time:</strong> ${fmtDate(ts)}</div>
+          `;
+          frag.appendChild(el);
+        });
+
+        blocksDiv.innerHTML = "";
+        blocksDiv.appendChild(frag);
+
+        // Chart chronological (left oldest -> right newest)
+        updateChart([...labels].reverse(), [...txCounts].reverse());
+      };
+
+      const applyClientFilters = (docs) => {
+        const minerFilter = (filterMinerEl.value || "").trim().toLowerCase();
+        const txMin = Number(filterTxMinEl.value || 0);
+        return docs.filter(d => {
+          const b = d.data();
+          const miner = (b.miner || "").toLowerCase();
+          const txCount = b.txCount ?? 0;
+          const passMiner = minerFilter ? miner.includes(minerFilter) : true;
+          const passTx = txCount >= txMin;
+          return passMiner && passTx;
+        });
+      };
+
+      const setPaginationState = (docs) => {
+        firstVisible = docs[0];
+        lastVisible = docs[docs.length - 1];
+        btnPrev.disabled = currentPage <= 1;
+        btnNext.disabled = docs.length < pageSize;
+        pageInfo.textContent = `Page ${currentPage}`;
+      };
+
+      const loadPage = async (direction = "desc", cursor = null) => {
+        statusText.textContent = "Loading…";
+        const q = await buildQuery(direction, cursor);
+        const snap = await getDocs(q);
+        let docs = snap.docs;
+        docs = applyClientFilters(docs);
+        renderBlocks(docs);
+        setPaginationState(docs);
+        statusText.textContent = realtimeOn ? "Live" : "Paused";
+      };
+
+      const attachRealtime = () => {
+        if (detachRealtime) detachRealtime(); // safety
+        const q = query(blocksRef, orderBy("timestamp", "desc"), limit(pageSize));
+        detachRealtime = onSnapshot(q, (snapshot) => {
+          statusText.textContent = "Live";
+          let docs = snapshot.docs;
+          docs = applyClientFilters(docs);
+          renderBlocks(docs);
+          setPaginationState(docs);
+        }, (err) => {
+          statusText.textContent = "Error";
+          blocksDiv.innerHTML = `<div class="block">Error subscribing: ${err?.message || err}</div>`;
+        });
+      };
+
+      // Initial
+      attachRealtime();
+
+      // Controls
+      btnNext.addEventListener("click", async () => {
+        if (!lastVisible) return;
+        realtimeOn = false;
+        toggleRealtimeEl.textContent = "Realtime: OFF";
+        if (detachRealtime) detachRealtime();
+        currentPage++;
+        await loadPage("desc", lastVisible);
+      });
+
+      btnPrev.addEventListener("click", async () => {
+        // Simple prev: reload first page (for demo). For true back-cursor, store a stack of cursors.
+        if (currentPage <= 1) return;
+        realtimeOn = false;
+        toggleRealtimeEl.textContent = "Realtime: OFF";
+        if (detachRealtime) detachRealtime();
+        currentPage = 1;
+        await loadPage("desc", null);
+      });
+
+      toggleRealtimeEl.addEventListener("click", () => {
+        realtimeOn = !realtimeOn;
+        toggleRealtimeEl.textContent = `Realtime: ${realtimeOn ? "ON" : "OFF"}`;
+        if (realtimeOn) {
+          attachRealtime();
+        } else if (detachRealtime) {
+          detachRealtime();
+          statusText.textContent = "Paused";
+        }
+      });
+
+      applyFilterEl.addEventListener("click", async () => {
+        if (realtimeOn) {
+          attachRealtime();
+        } else {
+          await loadPage("desc", currentPage > 1 ? lastVisible : null);
+        }
+      });
+
+      clearFilterEl.addEventListener("click", async () => {
+        filterMinerEl.value = "";
+        filterTxMinEl.value = "";
+        if (realtimeOn) {
+          attachRealtime();
+        } else {
+          await loadPage("desc", currentPage > 1 ? lastVisible : null);
+        }
+      });
+    }
+
+    // --- WALLETS: basic list (replace with your schema) ---
+    async function renderWallets() {
+      root.innerHTML = `
+        <h1>💼 Wallets</h1>
+        <div class="toolbar mb-3">
+          <div class="input-group input-group-sm" style="max-width: 360px;">
+            <span class="input-group-text">Search</span>
+            <input id="walletSearch" class="form-control" placeholder="address or alias">
+          </div>
+          <button id="applyWalletSearch" class="btn btn-sm btn-primary">Apply</button>
+          <button id="clearWalletSearch" class="btn btn-sm btn-secondary">Clear</button>
+        </div>
+        <div id="walletsList" class="mb-3">Loading wallets…</div>
+        <div class="muted">Tip: adjust Firestore rules to expose only safe fields.</div>
+      `;
+
+      const listEl = document.getElementById("walletsList");
+      const searchEl = document.getElementById("walletSearch");
+      const applyBtn = document.getElementById("applyWalletSearch");
+      const clearBtn = document.getElementById("clearWalletSearch");
+
+      const ref = collection(db, "wallets");
+      const snap = await getDocs(query(ref, orderBy("balance", "desc"), limit(50)));
+      let docs = snap.docs;
+
+      const render = () => {
+        const q = (searchEl.value || "").trim().toLowerCase();
+        const filtered = q ? docs.filter(d => {
+          const w = d.data();
+          return (w.address || "").toLowerCase().includes(q) || (w.alias || "").toLowerCase().includes(q);
+        }) : docs;
+
+        const frag = document.createDocumentFragment();
+        filtered.forEach(d => {
+          const w = d.data();
+          const el = document.createElement("div");
+          el.className = "block";
+          el.innerHTML = `
+            <div><strong>Alias:</strong> ${safe(w.alias, "-")}</div>
+            <div><strong>Address:</strong> <span class="hash">${trunc(w.address, 64)}</span></div>
+            <div><strong>Balance:</strong> ${safe(w.balance, 0)}</div>
+            <div><strong>Nonce:</strong> ${safe(w.nonce, 0)}</div>
+            <div class="muted">Updated: ${fmtDate(toMillis(w.updatedAt))}</div>
+          `;
+          frag.appendChild(el);
+        });
+
+        listEl.innerHTML = "";
+        listEl.appendChild(frag);
+      };
+
+      render();
+      applyBtn.addEventListener("click", render);
+      clearBtn.addEventListener("click", () => { searchEl.value = ""; render(); });
+    }
+
+    // --- MINER: status (replace with your schema) ---
+    async function renderMiner() {
+      root.innerHTML = `
+        <h1>⛏️ Miner status</h1>
+        <div id="minersList">Loading miners…</div>
+      `;
+      const listEl = document.getElementById("minersList");
+      const ref = collection(db, "miners");
+      const snap = await getDocs(query(ref, orderBy("lastSeen", "desc"), limit(50)));
+      const docs = snap.docs;
+
+      const frag = document.createDocumentFragment();
+      docs.forEach(d => {
+        const m = d.data();
+        const el = document.createElement("div");
+        el.className = "block";
+        el.innerHTML = `
+          <div><strong>Miner:</strong> ${safe(m.alias, d.id)}</div>
+          <div><strong>Address:</strong> <span class="hash">${trunc(m.address, 64)}</span></div>
+          <div><strong>Hashrate:</strong> ${safe(m.hashrate, 0)} H/s</div>
+          <div><strong>Shares:</strong> ${safe(m.shares, 0)}</div>
+          <div><strong>Last seen:</strong> ${fmtDate(toMillis(m.lastSeen))}</div>
+          <div><strong>Status:</strong> <span class="badge ${m.online ? 'text-bg-success' : 'text-bg-secondary'}">${m.online ? 'Online' : 'Offline'}</span></div>
+        `;
+        frag.appendChild(el);
+      });
+      listEl.innerHTML = "";
+      listEl.appendChild(frag);
+    }
+  </script>
+</body>
+</html>

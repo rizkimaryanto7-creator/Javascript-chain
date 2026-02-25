@@ -1,8 +1,19 @@
 {
-  "difficulty": 5,
-  "totalSupply": 500000000,
+  "difficulty": 1,
+  "totalSupply": 10000000000,
   "premineRatio": 0.05,
-  "baseReward": 100,
-  "minReward": 6.25,
-  "halvingIntervalBlocks": 210000
+  "premineAddress": "0xeaed9bf95a9ef9ce73081a3a164e37a106af77f9",
+  "baseReward": 10000,
+  "minReward": 625,
+  "halvingIntervalBlocks": 250000,
+  "targetBlockTime": 120,
+  "enableMining": true,
+  "enablePool": true,
+  "enableP2P": true,
+  "useWorkerThreads": true,
+  "wsPort": 3001,
+  "chainId": 102,
+  "networkId": 102,
+  "rpcUrl": "https://rpc-waochain.xyz/rpc",
+  "explorerUrl": "https://rpc-waochain.xyz/explorer"
 }

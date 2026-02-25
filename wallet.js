@@ -3,136 +3,153 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const QRCode = require('qrcode');
+const { ec: EC } = require('elliptic');
+const { keccak256 } = require('js-sha3');   // Tambahan untuk Ethereum-style address
 
-const EXPLORER_URL = 'http://localhost:3000'; // Ganti sesuai URL explorer kamu
+const ec = new EC('secp256k1');
+
+const EXPLORER_URL = 'http://localhost:3000';
 const WALLET_DIR = path.join(process.cwd(), 'wallets');
 if (!fs.existsSync(WALLET_DIR)) fs.mkdirSync(WALLET_DIR);
 
-/**
- * Validasi format address
- */
-function isValidAddress(address) {
-  return typeof address === 'string' && /^[a-f0-9]{64}$/.test(address);
+const ENC_KEY = crypto.createHash('sha256').update('your-password').digest();
+
+// --- Encryption Helpers ---
+function encrypt(text) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', ENC_KEY, iv);
+  let enc = cipher.update(text, 'utf8', 'hex');
+  enc += cipher.final('hex');
+  return iv.toString('hex') + ':' + enc;
 }
 
-/**
- * Generate wallet baru
- */
-function generateWallet(name = 'default') {
-  const privateKey = crypto.randomBytes(32).toString('hex');
-  const publicKey = crypto.createHash('sha256').update(privateKey).digest('hex');
-  const wallet = {
-    name,
-    publicKey,
-    privateKey,
-    createdAt: new Date().toISOString(),
-    role: 'user',
-    tags: [],
-    plugins: [],
-    isPublic: false
-  };
-  saveWallet(wallet);
-  return wallet;
+function decrypt(encText) {
+  if (!encText.includes(':')) return encText;
+  const [ivHex, data] = encText.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', ENC_KEY, iv);
+  let dec = decipher.update(data, 'hex', 'utf8');
+  dec += decipher.final('utf8');
+  return dec;
 }
 
-/**
- * Restore wallet dari private key
- */
-function restoreWallet(name, privateKey) {
-  if (!privateKey || privateKey.length !== 64) throw new Error('❌ Private key tidak valid');
-  const publicKey = crypto.createHash('sha256').update(privateKey).digest('hex');
-  const wallet = {
-    name,
-    publicKey,
-    privateKey,
-    createdAt: new Date().toISOString(),
-    role: 'user',
-    tags: [],
-    plugins: [],
-    isPublic: false
-  };
-  saveWallet(wallet);
-  return wallet;
+// --- Wallet Class ---
+class Wallet {
+  constructor(name, keyPair) {
+    this.name = name;
+    this.keyPair = keyPair;
+    this.publicKey = keyPair.getPublic('hex');
+    this.privateKey = keyPair.getPrivate('hex');
+
+    // Ethereum-style address: keccak256(publicKey) → ambil 20 byte terakhir
+    const pubKeyNoPrefix = this.publicKey.startsWith('04') ? this.publicKey.slice(2) : this.publicKey;
+    const hash = keccak256(Buffer.from(pubKeyNoPrefix, 'hex'));
+    this.address = '0x' + hash.slice(-40);
+  }
+
+  sign(tx) {
+    const hash = crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex');
+    return this.keyPair.sign(hash).toDER('hex');
+  }
 }
 
-/**
- * Simpan wallet ke file
- */
+// --- Nonce Tracking ---
+const walletNonces = {};
+function getNonce(address) {
+  return walletNonces[address] || 0;
+}
+function incrementNonce(address) {
+  walletNonces[address] = getNonce(address) + 1;
+}
+
+// --- Wallet Persistence ---
 function saveWallet(wallet) {
   const filePath = path.join(WALLET_DIR, `${wallet.name}.json`);
-  fs.writeFileSync(filePath, JSON.stringify(wallet, null, 2), 'utf8');
+  fs.writeFileSync(filePath, JSON.stringify({
+    name: wallet.name,
+    publicKey: wallet.publicKey,
+    privateKey: encrypt(wallet.privateKey),
+    address: wallet.address,
+    createdAt: new Date().toISOString(),
+    role: 'user'
+  }, null, 2));
 }
 
-/**
- * Load wallet dari nama
- */
+function generateWallet(name = 'default') {
+  const keyPair = ec.genKeyPair();
+  const wallet = new Wallet(name, keyPair);
+  walletNonces[wallet.address] = 0;
+  saveWallet(wallet);
+  return wallet;
+}
+
+function restoreWallet(name, privateKey) {
+  const keyPair = ec.keyFromPrivate(privateKey, 'hex');
+  const wallet = new Wallet(name, keyPair);
+  walletNonces[wallet.address] = 0;
+  saveWallet(wallet);
+  return wallet;
+}
+
 function loadWallet(name = 'default') {
   const filePath = path.join(WALLET_DIR, `${name}.json`);
-  if (!fs.existsSync(filePath)) {
-    console.warn(`⚠️ Wallet ${name} tidak ditemukan.`);
-    return null;
-  }
-  const raw = fs.readFileSync(filePath, 'utf8');
-  return JSON.parse(raw);
+  if (!fs.existsSync(filePath)) return null;
+  const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  const priv = decrypt(raw.privateKey);
+  const keyPair = ec.keyFromPrivate(priv, 'hex');
+  const wallet = new Wallet(raw.name, keyPair);
+  walletNonces[wallet.address] = walletNonces[wallet.address] || 0;
+  return wallet;
 }
 
-/**
- * Export wallet ke file backup
- */
-function exportWallet(wallet) {
-  const filePath = path.join(process.cwd(), `backup_${wallet.publicKey}.json`);
-  fs.writeFileSync(filePath, JSON.stringify(wallet, null, 2), 'utf8');
-  console.log(`📤 Wallet diexport ke ${filePath}`);
+function getAll() {
+  const files = fs.readdirSync(WALLET_DIR).filter(f => f.endsWith('.json'));
+  return files.map(f => {
+    const raw = JSON.parse(fs.readFileSync(path.join(WALLET_DIR, f), 'utf8'));
+    return { name: raw.name, publicKey: raw.publicKey, address: raw.address, createdAt: raw.createdAt, role: raw.role };
+  });
 }
 
-/**
- * Generate QR Code untuk address
- */
-async function generateQRCode(address) {
-  return await QRCode.toDataURL(address);
+// --- Transaction Helpers ---
+function signTransaction(wallet, to, amount) {
+  const nonce = getNonce(wallet.address);
+  const tx = { from: wallet.address, to, amount, nonce, timestamp: Date.now() };
+  const signature = wallet.sign(tx);
+  incrementNonce(wallet.address);
+  return { ...tx, signature };
 }
 
-/**
- * Fetch balance dari explorer
- */
+function verifySignature(publicKey, signature, tx) {
+  const key = ec.keyFromPublic(publicKey, 'hex');
+  const hash = crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex');
+  return key.verify(hash, signature);
+}
+
+// --- Explorer Integration ---
 async function getBalance(address) {
-  if (!isValidAddress(address)) return null;
   try {
-    const res = await axios.get(`${EXPLORER_URL}/balance/${address}`);
-    return res.data.balance;
-  } catch (err) {
-    console.error('❌ Gagal fetch balance:', err.message);
+    const res = await axios.get(`${EXPLORER_URL}/api/address/${address}`);
+    return res.data.balance || 0;
+  } catch {
     return null;
   }
 }
 
-/**
- * Fetch histori transaksi dari explorer
- */
 async function getTransactions(address) {
-  if (!isValidAddress(address)) return [];
   try {
-    const res = await axios.get(`${EXPLORER_URL}/txs?address=${address}`);
-    return res.data.transactions;
-  } catch (err) {
-    console.error('❌ Gagal fetch transaksi:', err.message);
+    const res = await axios.get(`${EXPLORER_URL}/api/history/${address}`);
+    return res.data.transactions || [];
+  } catch {
     return [];
   }
 }
 
-/**
- * Kirim transaksi langsung dari wallet
- */
-async function sendTransaction(wallet, to, amount) {
-  const tx = {
-    from: wallet.publicKey,
-    to,
-    amount,
-    timestamp: Date.now()
-  };
-  tx.signature = signTransaction(wallet.privateKey, tx);
+async function sendTransaction(walletName, toAddress, amount) {
   try {
-    const res = await axios.post(`${EXPLORER_URL}/broadcast`, tx);
+    const wallet = loadWallet(walletName);
+    if (!wallet) throw new Error("Wallet not found");
+    const tx = signTransaction(wallet, toAddress, amount);
+    const res = await axios.post(`${EXPLORER_URL}/api/transfer`, tx);
     return res.data;
   } catch (err) {
     console.error('❌ Gagal kirim transaksi:', err.message);
@@ -140,114 +157,8 @@ async function sendTransaction(wallet, to, amount) {
   }
 }
 
-/**
- * Tanda tangan transaksi
- */
-function signTransaction(privateKey, transaction) {
-  const data = JSON.stringify(transaction);
-  return crypto.createHash('sha256').update(data + privateKey).digest('hex');
-}
-
-/**
- * Verifikasi tanda tangan
- */
-function verifySignature(publicKey, transaction, signature) {
-  const expected = crypto.createHash('sha256').update(JSON.stringify(transaction) + publicKey).digest('hex');
-  return expected === signature;
-}
-
-/**
- * Scripthash custom
- */
-function scripthash(input, nonce) {
-  let data = input + nonce;
-  for (let i = 0; i < 16; i++) {
-    const hash = crypto.createHash('sha256').update(data).digest('hex');
-    data = hash.split('').reverse().join('');
-    if (i % 3 === 0) {
-      data = data.replace(/[aeiou]/gi, 'x');
-    }
-  }
-  return crypto.createHash('sha256').update(data).digest('hex');
-}
-
-/**
- * Dokumentasi schema wallet
- */
-function getWalletSchema() {
-  return {
-    name: 'string',
-    publicKey: 'hex(64)',
-    privateKey: 'hex(64)',
-    createdAt: 'ISO timestamp',
-    role: 'string',
-    tags: ['string'],
-    plugins: ['string'],
-    isPublic: 'boolean'
-  };
-}
-
-/**
- * CLI interface
- */
-if (require.main === module) {
-  const args = process.argv.slice(2);
-  const cmd = args[0];
-
-  if (cmd === 'generate') {
-    const name = args[1] || 'default';
-    const wallet = generateWallet(name);
-    console.log('✅ Wallet generated:\n', wallet);
-
-  } else if (cmd === 'restore' && args[1] && args[2]) {
-    const wallet = restoreWallet(args[1], args[2]);
-    console.log('✅ Wallet restored:\n', wallet);
-
-  } else if (cmd === 'show') {
-    const name = args[1] || 'default';
-    const wallet = loadWallet(name);
-    console.log('🔐 Current wallet:\n', wallet);
-
-  } else if (cmd === 'info') {
-    const name = args[1] || 'default';
-    const wallet = loadWallet(name);
-    if (!wallet) return;
-    getBalance(wallet.publicKey).then(balance => {
-      console.log('💰 Balance:', balance);
-    });
-    getTransactions(wallet.publicKey).then(txs => {
-      console.log('📜 History:');
-      txs.forEach(tx => {
-        console.log(`- ${tx.hash} | ${tx.amount} | ${tx.timestamp}`);
-      });
-    });
-
-  } else if (cmd === 'export') {
-    const name = args[1] || 'default';
-    const wallet = loadWallet(name);
-    if (wallet) exportWallet(wallet);
-
-  } else if (cmd === 'send' && args.length >= 4) {
-    const wallet = loadWallet(args[1]);
-    const to = args[2];
-    const amount = parseFloat(args[3]);
-    sendTransaction(wallet, to, amount).then(res => {
-      console.log('📤 Transaksi dikirim:', res);
-    });
-
-  } else if (cmd === 'schema') {
-    console.log('📚 Wallet Schema:\n', getWalletSchema());
-
-  } else {
-    console.log(`Usage:
-  node wallet.js generate [name]
-  node wallet.js restore [name] [privateKey]
-  node wallet.js show [name]
-  node wallet.js info [name]
-  node wallet.js export [name]
-  node wallet.js send [name] [to] [amount]
-  node wallet.js schema`);
-  }
+async function generateQRCode(address) {
+  return await QRCode.toDataURL(address);
 }
 
 module.exports = {
@@ -255,14 +166,12 @@ module.exports = {
   restoreWallet,
   loadWallet,
   saveWallet,
-  exportWallet,
+  getAll,
   getBalance,
   getTransactions,
   sendTransaction,
+  generateQRCode,
   signTransaction,
   verifySignature,
-  scripthash,
-  isValidAddress,
-  generateQRCode,
-  getWalletSchema
+  getNonce
 };

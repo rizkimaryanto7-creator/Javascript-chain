@@ -1,22 +1,41 @@
-// node.js — Bagian 1: Setup & Inisialisasi
+// --- Core Imports ---
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
 const express = require('express');
-const { Worker } = require('worker_threads');
+const axios = require('axios');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+const { Worker } = require('worker_threads');
 const Blockchain = require('./chain');
+const walletManager = require('./walletManager'); // sudah diubah ke Ethereum-style
+const setupRPC = require('./rpcAdapter');
+const os = require('os');
 
+// --- Auth Imports ---
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+
+// --- Config ---
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 const DEFAULT_CONFIG = {
-  difficulty: 4,
+  difficulty: 0,
   totalSupply: 500_000_000,
   premineRatio: 0.05,
   baseReward: 100,
   minReward: 6.25,
   halvingIntervalBlocks: 210000,
-  targetBlockTime: 120
+  targetBlockTime: 120,
+  enableMining: true,
+  enablePool: true,
+  enableP2P: true,
+  useWorkerThreads: true,
+  wsPort: 3001,
+  chainId: 102,
+  networkId: 102,
+  rpcUrl: "http://localhost:3000",
+  explorerUrl: "http://localhost:3000/explorer"
 };
+
 function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
@@ -30,319 +49,413 @@ function loadConfig() {
 }
 const CFG = loadConfig();
 
-let ec;
-try {
-  const EC = require('elliptic').ec;
-  ec = new EC('secp256k1');
-} catch (_) {}
+// --- Blockchain Init ---
+const jsChain = new Blockchain(null, CFG);
 
-function makeWallet() {
-  const privateKey = crypto.randomBytes(32).toString('hex');
-  const publicKey = ec
-    ? ec.keyFromPrivate(privateKey, 'hex').getPublic('hex')
-    : crypto.randomBytes(33).toString('hex');
-  return { publicKey, privateKey };
-}
-
-const devWallet = JSON.parse(fs.readFileSync('dev_wallet.json', 'utf8'));
-const jsChain = new Blockchain(devWallet.publicKey, CFG);
-console.log('🔐 Dev Wallet Public Key:', devWallet.publicKey);
-
-function formatHashrate(h) {
-  if (h >= 1e9) return (h / 1e9).toFixed(2) + ' GH/s';
-  if (h >= 1e6) return (h / 1e6).toFixed(2) + ' MH/s';
-  if (h >= 1e3) return (h / 1e3).toFixed(2) + ' KH/s';
-  return h + ' H/s';
-}
-
+// --- Miner Controller ---
 const minerController = {
-  isMining: false,
-  workers: [],
+  activeMiners: {},
   perCore: {},
   bestHash: {},
   totalHashrate: 0,
-  activeMiners: [],
-  minerAddress: null,
-  startedAt: null,
   lastBlockMinedAt: null,
-  currentWorkTxs: null
+  totalShares: 0
 };
-function startWorkers(minerAddress) {
-  if (minerController.isMining) return;
-  minerController.isMining = true;
-  minerController.minerAddress = minerAddress;
-  minerController.startedAt = Date.now();
-  minerController.activeMiners.push(minerAddress);
 
-  const cpuCount = os.cpus().length || 8;
-  const workTxs = jsChain.buildWorkTransactions(minerAddress);
-  if (!workTxs) return;
+// --- Pool Miner Tracking ---
+let miners = {};
+let difficultyPrefix = '0'.repeat(CFG.difficulty || 2);
+jsChain.setDifficulty(difficultyPrefix);
 
-  const prevHash = jsChain.getLatestBlock().hash;
-  const blockData = prevHash + JSON.stringify(workTxs);
-  const difficulty = jsChain.difficulty || 4;
-
-  minerController.perCore = {};
-  minerController.bestHash = {};
-  minerController.totalHashrate = 0;
-  minerController.workers = [];
-  minerController.currentWorkTxs = workTxs;
-
-  for (let i = 0; i < cpuCount; i++) {
-    const worker = new Worker(path.join(__dirname, 'minerWorker.js'), {
-      workerData: { core: i + 1, blockData, difficulty, minerAddress }
-    });
-
-    worker.on('message', (msg) => {
-      if (msg.found) {
-        minerController.bestHash[msg.core] = msg.bestHash;
-        minerController.perCore[msg.core] = 0;
-        minerController.totalHashrate = Object.values(minerController.perCore).reduce((a, b) => a + b, 0);
-        minerController.lastBlockMinedAt = new Date().toISOString();
-        stopWorkers();
-        const ok = jsChain.addBlockFromWorker(minerController.currentWorkTxs, msg.nonce, msg.hash, minerAddress);
-        if (ok) {
-          saveChainState();
-          setTimeout(() => startWorkers(minerAddress), 100); // auto-loop
-        }
-      } else {
-        minerController.perCore[msg.core] = msg.hashrate;
-        minerController.bestHash[msg.core] = msg.bestHash;
-        minerController.totalHashrate = Object.values(minerController.perCore).reduce((a, b) => a + b, 0);
-      }
-    });
-
-    worker.on('error', (err) => console.error(`❌ Worker ${i + 1} error:`, err));
-    worker.on('exit', () => {
-      minerController.perCore[i + 1] = 0;
-      minerController.totalHashrate = Object.values(minerController.perCore).reduce((a, b) => a + b, 0);
-    });
-
-    minerController.workers.push(worker);
-  }
-}
-
-function stopWorkers() {
-  if (!minerController.isMining) return;
-  for (const w of minerController.workers) {
-    try { w.postMessage({ cmd: 'stop' }); w.terminate(); } catch {}
-  }
-  minerController.workers = [];
-  minerController.isMining = false;
-}
-
+// --- Express Setup ---
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.use('/js', express.static(path.join(__dirname, 'public/js')));
+app.set('trust proxy', 1);
 
-app.get('/wallets', (req, res) => {
-  res.render('wallets', {
-    wallets: Object.entries(jsChain.wallets).map(([name, w]) => ({
-      name,
-      publicKey: w.publicKey
-    }))
+// --- Session Setup ---
+app.use(session({
+  secret: 'jschain-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false } // kalau pakai HTTPS bisa true
+}));
+
+// --- Rate Limit ---
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5000,
+  message: { status: 'error', reason: 'Too many requests, slow down!' }
+});
+app.use(limiter);
+
+// ================= MINING ROUTES =================
+
+app.get('/mining-task', (req, res) => {
+  const minerAddr = req.query.minerAddress || "SYSTEM_NODE";
+  const latestBlock = jsChain.getLatestBlock();
+  const txs = jsChain.buildWorkTransactions(minerAddr);
+  const taskTimestamp = Date.now();
+  const nextIndex = jsChain.chain.length;
+
+  res.json({
+    index: nextIndex,
+    previousHash: latestBlock.hash,
+    difficulty: difficultyPrefix,
+    timestamp: taskTimestamp,
+    transactions: txs,
+    startNonce: 0,
+    endNonce: 1000000
   });
 });
 
-app.post('/wallets/create', (req, res) => {
-  let { name } = req.body;
-  if (!name) return res.status(400).send('Invalid name');
-  let finalName = name;
-  let counter = 1;
-  while (jsChain.wallets[finalName]) {
-    finalName = `${name}${counter++}`;
+app.post('/submit-block', (req, res) => {
+  const { index, previousHash, transactions, nonce, hash, minerAddress, timestamp } = req.body;
+  const ok = jsChain.addBlockFromWorker(transactions, nonce, hash, minerAddress, timestamp);
+
+  if (!ok) {
+    return res.status(400).json({ status: 'rejected', reason: 'Invalid hash/mismatch' });
   }
-  const wallet = makeWallet();
-  jsChain.createWallet(finalName, wallet);
-  res.redirect(`/wallets/${encodeURIComponent(finalName)}`);
+
+  // Difficulty Adaptif
+  const chain = jsChain.chain;
+  if (chain.length > 1) {
+    const latest = chain[chain.length - 1];
+    const prev = chain[chain.length - 2];
+    const blockTime = latest.timestamp - prev.timestamp;
+    if (blockTime < CFG.targetBlockTime * 1000 && difficultyPrefix.length < 6) {
+      difficultyPrefix += '0';
+    } else if (blockTime > CFG.targetBlockTime * 2000 && difficultyPrefix.length > 1) {
+      difficultyPrefix = difficultyPrefix.slice(0, -1);
+    }
+    jsChain.setDifficulty(difficultyPrefix);
+  }
+
+  // Update miner stats
+  if (!minerController.activeMiners[minerAddress]) {
+    minerController.activeMiners[minerAddress] = { shares: 0, blocks: 0, reward: 0 };
+  }
+  minerController.activeMiners[minerAddress].blocks++;
+  minerController.activeMiners[minerAddress].reward += jsChain.getCurrentReward();
+  minerController.activeMiners[minerAddress].lastSeen = new Date().toLocaleString();
+
+  minerController.lastBlockMinedAt = Date.now();
+
+  const rewardTxs = transactions.filter(tx => tx.from === 'SYSTEM');
+  res.json({ status: 'accepted', index, hash, rewardTxs });
 });
 
-app.get('/wallets/:name', (req, res) => {
-  const w = jsChain.wallets[req.params.name];
-  if (!w) return res.status(404).send('Wallet not found');
-  res.render('wallet_detail', { name: req.params.name, publicKey: w.publicKey });
+// ================= AUTH ROUTES =================
+
+// Middleware proteksi login
+function requireLogin(req, res, next) {
+  if (!req.session.user) {
+    return res.redirect('/login?error=Harus login dulu');
+  }
+  next();
+}
+
+// Halaman registrasi
+app.get('/register', (req, res) => {
+  res.render('register', {
+    successMessage: req.query.success || null,
+    errorMessage: req.query.error || null
+  });
 });
 
-app.post('/api/transfer', (req, res) => {
-  const { fromName, toAddress, amount } = req.body;
-  if (!fromName || !toAddress || !amount) return res.status(400).json({ error: 'Missing fields' });
-  jsChain.createTransaction(fromName, toAddress, Number(amount));
-  res.json({ ok: true });
+app.post('/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.redirect('/register?error=Invalid input');
+
+  let users = [];
+  if (fs.existsSync('users.json')) {
+    users = JSON.parse(fs.readFileSync('users.json', 'utf8'));
+  }
+
+  if (users.find(u => u.username === username)) {
+    return res.redirect('/register?error=User sudah ada');
+  }
+
+  const hash = bcrypt.hashSync(password, 10);
+  users.push({ username, passwordHash: hash });
+  fs.writeFileSync('users.json', JSON.stringify(users, null, 2));
+  res.redirect('/login?success=Registrasi berhasil');
 });
 
-// Explorer main page
+// Halaman login
+app.get('/login', (req, res) => {
+  res.render('login', {
+    successMessage: req.query.success || null,
+    errorMessage: req.query.error || null
+  });
+});
+
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  let users = [];
+  if (fs.existsSync('users.json')) {
+    users = JSON.parse(fs.readFileSync('users.json', 'utf8'));
+  }
+
+  const user = users.find(u => u.username === username);
+  if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
+    return res.redirect('/login?error=Login gagal');
+  }
+
+  req.session.user = username;
+  res.redirect('/wallets');
+});
+
+// Logout
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/login?success=Logout berhasil');
+  });
+});
+
+// ================= WALLET ROUTES (Ethereum-style) =================
+
+app.get('/wallets', requireLogin, (req, res) => {
+  res.render('wallets', {
+    wallets: walletManager.getAllForUser(req.session.user),
+    successMessage: req.query.success || null,
+    errorMessage: req.query.error || null
+  });
+});
+
+app.post('/wallets/create', requireLogin, (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.redirect('/wallets?error=Invalid name');
+  const wallet = walletManager.generateEthereumWalletForUser(req.session.user, name);
+  res.redirect('/wallets?success=Wallet berhasil dibuat');
+});
+
+app.post('/wallets/import', requireLogin, (req, res) => {
+  const { name, walletJson } = req.body;
+  try {
+    const parsed = JSON.parse(walletJson);
+    walletManager.saveWalletForUser(req.session.user, name, parsed);
+    res.redirect('/wallets?success=Wallet berhasil diimport');
+  } catch (e) {
+    res.redirect('/wallets?error=Import gagal');
+  }
+});
+
+app.get('/wallets/:name', requireLogin, (req, res) => {
+  const wallet = walletManager.loadWalletForUser(req.session.user, req.params.name);
+  if (!wallet) return res.status(404).send('Not found');
+  res.render('wallet_detail', { 
+    name: wallet.name, 
+    publicKey: wallet.publicKey, 
+    address: wallet.address // Ethereum-style 0x...
+  });
+});
+
+app.get('/wallets/:name/history', requireLogin, (req, res) => {
+  const wallet = walletManager.loadWalletForUser(req.session.user, req.params.name);
+  if (!wallet) return res.status(404).send('Not found');
+  res.render('wallet_history', { 
+    name: wallet.name, 
+    history: jsChain.getTransactionsByWallet(wallet.address) 
+  });
+});
+
+app.get('/wallets/:name/export', requireLogin, (req, res) => {
+  const wallet = walletManager.loadWalletForUser(req.session.user, req.params.name);
+  if (!wallet) return res.status(404).json({ error: 'Not found' });
+  res.json(wallet);
+});
+
+app.post('/wallets/:name/delete', requireLogin, (req, res) => {
+  walletManager.deleteWalletForUser(req.session.user, req.params.name);
+  res.redirect('/wallets?success=Wallet berhasil dihapus');
+});
+
+// ================= METAMASK ROUTES =================
+app.post('/metamask/connect', requireLogin, (req, res) => {
+  const { address } = req.body;
+  if (!address) {
+    return res.json({ ok: false, error: 'No address provided' });
+  }
+  // Simpan address ke session user
+  req.session.metamaskAddress = address;
+  console.log("MetaMask connected:", address);
+  res.json({ ok: true, msg: 'MetaMask connected', address });
+});
+
+// ================= MINER DASHBOARD =================
+app.get('/miner', (req, res) => {
+  res.render('miner_stats');
+});
+
+// ================= EXPLORER & SEARCH =================
 app.get('/explorer', (req, res) => {
-  res.render('explorer', { jsChain });
+  res.render('explorer', {
+    chain: jsChain.chain,
+    difficulty: difficultyPrefix,
+    reward: jsChain.getCurrentReward(),
+    height: jsChain.chain.length - 1,
+    peersCount: 0,
+    // Tambahan ini bro:
+    highlightAddress: req.session.metamaskAddress || null
+  });
 });
 
-// Block detail
+app.get('/search', (req, res) => {
+  const q = req.query.q;
+  if (!q) return res.redirect('/explorer');
+  const blockByIndex = jsChain.chain.find(b => b.index == q);
+  if (blockByIndex) return res.redirect(`/block/${blockByIndex.index}`);
+  const blockByHash = jsChain.chain.find(b => b.hash === q);
+  if (blockByHash) return res.redirect(`/block/${blockByHash.index}`);
+  const txSearch = jsChain.getTransactionByHash?.(q);
+  if (txSearch) return res.redirect(`/tx/${q}`);
+  res.redirect('/explorer');
+});
+
 app.get('/block/:index', (req, res) => {
   const block = jsChain.chain[Number(req.params.index)];
-  if (!block) return res.status(404).send('Block not found');
+  if (!block) return res.status(404).send('Not found');
   res.render('block_detail', { block });
 });
 
-// Address explorer
-app.get('/address/:addr', (req, res) => {
-  const txs = jsChain.getTransactionsByWallet(req.params.addr);
-  const balance = jsChain.getBalance(req.params.addr);
-  res.render('address_detail', { addr: req.params.addr, txs, balance });
+app.get('/tx/:hash', (req, res) => {
+  const tx = jsChain.getTransactionByHash?.(req.params.hash);
+  if (!tx) return res.status(404).send('Not found');
+  res.render('tx_detail', { tx: tx.tx, hash: req.params.hash, blockIndex: tx.blockIndex });
 });
 
-// Transaction detail
-app.get('/tx/:hash', (req, res) => {
-  const result = jsChain.getTransactionByHash?.(req.params.hash);
-  if (!result) return res.status(404).send('Transaction not found');
-  res.render('tx_detail', {
-    hash: req.params.hash,
-    blockIndex: result.blockIndex,
-    tx: result.tx
+app.get('/address/:addr', (req, res) => {
+  const balance = jsChain.getBalance(req.params.addr);
+  const txs = jsChain.getTransactionsByWallet(req.params.addr);
+  res.render('address_detail', { addr: req.params.addr, balance, txs });
+});
+
+// ================= API JSON ROUTES =================
+
+app.get('/api/chain', (req, res) => res.json(jsChain.chain));
+app.get('/api/status', (req, res) => res.json({
+  height: jsChain.chain.length - 1,
+  difficulty: difficultyPrefix,
+  reward: jsChain.getCurrentReward(),
+  activeMiners: Object.keys(minerController.activeMiners)
+}));
+app.get('/api/block/:index', (req, res) => res.json(jsChain.chain[req.params.index]));
+
+// ================= MINER STATS API =================
+
+app.get('/miner-stats', (req, res) => {
+  const activeMinerKeys = Object.keys(minerController.activeMiners);
+
+  const miners = activeMinerKeys.map(addr => {
+    const state = minerController.activeMiners[addr];
+    return {
+      address: addr, // Ethereum-style address
+      shares: state.shares || 0,
+      blocks: state.blocks || 0,
+      totalReward: state.reward || 0,
+      contributionPercent: minerController.totalShares > 0
+        ? ((state.shares || 0) / minerController.totalShares * 100).toFixed(2) + "%"
+        : "0%",
+      lastSeen: state.lastSeen || new Date().toLocaleString()
+    };
+  });
+
+  res.json({
+    difficulty: difficultyPrefix,
+    activeMiners: activeMinerKeys,
+    minerCount: activeMinerKeys.length,
+    totalShares: miners.reduce((sum, m) => sum + m.shares, 0),
+    avgBlockTimeMs: CFG.targetBlockTime * 1000,
+    miners
   });
 });
 
-// Search bar
-app.get('/search', (req, res) => {
-  const q = req.query.q?.trim();
-  if (!q) return res.redirect('/explorer');
-
-  const index = Number(q);
-  if (!isNaN(index) && jsChain.chain[index]) {
-    return res.redirect(`/block/${index}`);
-  }
-
-  const txs = jsChain.getTransactionsByWallet(q);
-  if (txs.length > 0) {
-    return res.redirect(`/address/${q}`);
-  }
-
-  const result = jsChain.getTransactionByHash?.(q);
-  if (result) {
-    return res.redirect(`/tx/${q}`);
-  }
-
-  res.send('🔍 No match found.');
+app.get('/chain-stats', (req, res) => {
+  res.json({
+    height: jsChain.chain.length - 1,
+    blocks: jsChain.chain.length
+  });
 });
 
-// Save chain + metadata + backup
-function saveChainState() {
-  try {
-    const chainPath = path.join(process.cwd(), 'chain.json');
-    const metaPath = path.join(process.cwd(), 'chain_meta.json');
-    const backupPath = path.join(process.cwd(), `chain_backup_${jsChain.chain.length}.json`);
+// ================= MINER CONTROL =================
 
-    const tmp = chainPath + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(jsChain.chain, null, 2));
-    fs.renameSync(tmp, chainPath);
-
-    const meta = {
-      height: jsChain.chain.length - 1,
-      difficulty: jsChain.difficulty,
-      totalSupply: jsChain.totalSupply,
-      minedCoins: jsChain.minedCoins,
-      reward: jsChain.getCurrentReward(),
-      lastBlockTime: jsChain.getLatestBlock().timestamp,
-      updatedAt: Date.now()
-    };
-    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
-
-    if (jsChain.chain.length % 100 === 0) {
-      fs.writeFileSync(backupPath, JSON.stringify(jsChain.chain, null, 2));
+let PORT = process.env.PORT || 3000;
+function startWorker(minerAddress, coreId = 0) {
+  if (!minerController.activeMiners[minerAddress]) {
+    minerController.activeMiners[minerAddress] = { isMining: true, shares: 0, blocks: 0, reward: 0 };
+  }
+  const worker = new Worker(path.join(__dirname, 'minerWorker.js'), {
+    workerData: { core: coreId, nodeUrl: `http://localhost:${PORT}`, minerAddress }
+  });
+  worker.on('message', msg => {
+    if (msg.hashrate) {
+      minerController.perCore[minerAddress] = msg.hashrate;
+      minerController.activeMiners[minerAddress].shares += msg.hashrate;
+      minerController.totalShares += msg.hashrate;
+      minerController.totalHashrate += msg.hashrate;
     }
-  } catch (e) {
-    console.error('❌ Failed to save chain state:', e.message);
-  }
+    if (msg.bestHash) minerController.bestHash[minerAddress] = msg.bestHash;
+    minerController.activeMiners[minerAddress].lastSeen = new Date().toLocaleString();
+  });
+  minerController.activeMiners[minerAddress].worker = worker;
 }
-
-// Mining endpoints
-app.get('/miner', (req, res) => {
-  res.render('miner_stats', {});
-});
 
 app.post('/miner/start', (req, res) => {
   const { minerAddress } = req.body;
-  if (!minerAddress) return res.status(400).json({ error: 'minerAddress required' });
-  startWorkers(minerAddress);
-  res.json({ ok: true });
+  if (!minerAddress) return res.status(400).json({ error: 'Address required' });
+  startWorker(minerAddress);
+  res.json({ ok: true, miner: minerAddress, msg: "Mining started" });
 });
 
-app.post('/miner/stop', (req, res) => {
-  stopWorkers();
-  res.json({ ok: true });
+app.post('/miner/stop', async (req, res) => {
+  const { minerAddress } = req.body;
+  const state = minerController.activeMiners[minerAddress];
+  if (state && state.worker) await state.worker.terminate();
+  delete minerController.activeMiners[minerAddress];
+  res.json({ ok: true, msg: "Mining stopped" });
 });
 
-app.post('/mine', (req, res) => {
-  try {
-    jsChain.minePendingTransactions('miner1');
-    saveChainState();
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+// ================= HOME & START =================
 
-// Mining stats
-app.get('/mining-stats', (req, res) => {
-  res.json({
-    height: jsChain.chain.length - 1,
-    difficulty: jsChain.difficulty,
-    reward: jsChain.getCurrentReward(),
-    totalHashrate: formatHashrate(minerController.totalHashrate || 0),
-    pendingTxCount: jsChain.pendingTransactions.length,
-    perCore: minerController.perCore || {},
-    bestHash: minerController.bestHash || {},
-    lastBlockMinedAt: minerController.lastBlockMinedAt || null,
-    startedAt: minerController.startedAt || null,
-    miners: minerController.activeMiners || []
+app.get(['/', '/home'], (req, res) => {
+  const chain = jsChain.chain;
+  const latestBlock = chain.length ? chain[chain.length - 1] : null;
+
+  // Ambil semua transaksi
+  const allTxs = chain.flatMap(b => b.transactions || []);
+
+  // Filter hanya transaksi valid (punya hash)
+  const validTxs = allTxs.filter(tx => tx && tx.hash);
+
+  res.render('home', {
+    // Stats Card
+    latestBlock: latestBlock ? latestBlock.index : 0,
+    txCount: validTxs.length,
+    walletCount: walletManager.getAll().length,
+    peerCount: 0,
+    difficulty: difficultyPrefix,
+    totalSupply: CFG.totalSupply,
+
+    // Dashboard transaksi
+    transactions: validTxs.slice(-10).reverse(),
+
+    // Footer info
+    chainVersion: 'v1.0.0',
+    latestHash: latestBlock ? latestBlock.hash : 'N/A',
+    nodeStatus: 'Online'
   });
 });
 
-// Metadata & config endpoints
-app.get('/config', (req, res) => {
-  res.json(CFG);
-});
+// ================= RPC SETUP =================
 
-app.get('/meta', (req, res) => {
-  try {
-    const meta = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'chain_meta.json'), 'utf8'));
-    res.json(meta);
-  } catch {
-    res.status(404).json({ error: 'Metadata not found' });
-  }
-});
+setupRPC(app, jsChain, walletManager);
 
-app.get('/backup-list', (req, res) => {
-  const files = fs.readdirSync(process.cwd()).filter(f => f.startsWith('chain_backup_'));
-  res.json({ backups: files });
-});
+// ================= SERVER START =================
 
-// Info page
-app.get('/about', (req, res) => {
-  res.render('about', {
-    title: 'Tentang JS-Chain',
-    description: 'JS-Chain adalah blockchain modular berbasis JavaScript yang bisa dijalankan dari HP, Termux, atau server ringan.',
-    vision: 'Membuka jalur digital yang scalable untuk komunitas global.',
-    mission: [
-      'Blockchain modular yang developer-friendly',
-      'Mining dan explorer langsung dari perangkat mobile',
-      'Integrasi domain dan tunnel untuk branding digital'
-    ],
-    links: {
-      explorer: 'https://donated-translation-pretty-paintings.trycloudflare.com/Explorer',
-      wallet: 'https://donated-translation-pretty-paintings.trycloudflare.com/wallets',
-      miner: 'https://donated-translation-pretty-paintings.trycloudflare.com/miner'
-    }
-  });
-});
-
-// Root
-app.get('/', (req, res) => {
-  res.send('🟢 JS-Chain Node running. Visit /explorer, /wallets, /miner, or /about');
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🟢 Node running at http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🟢 Super Node running at http://localhost:${PORT}`);
 });

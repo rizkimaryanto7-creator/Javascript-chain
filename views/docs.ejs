@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Docs — JS-Chain</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #ffffff; color: #333; font-family: 'Inter', sans-serif; }
+    .navbar { background-color: #f8f9fa; border-bottom: 1px solid #ddd; }
+    .card-light { background: #f9f9f9; border: 1px solid #ddd; border-radius: 10px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    h1, h4 { font-weight: 600; }
+    code { background: #eee; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light px-3">
+    <a class="navbar-brand fw-bold" href="/">⚡ JS-Chain</a>
+    <div class="ms-auto">
+      <a class="btn btn-outline-info me-2" href="/explorer">Explorer</a>
+      <a class="btn btn-outline-dark me-2" href="/wallets">Wallets</a>
+      <a class="btn btn-outline-success me-2" href="/miner">Miner</a>
+      <a class="btn btn-outline-warning" href="/stats">Stats</a>
+    </div>
+  </nav>
+
+  <div class="container my-5">
+    <h1 class="mb-4">📖 API Documentation</h1>
+
+    <!-- Wallet API -->
+    <div class="card-light">
+      <h4>💼 Wallet API</h4>
+      <ul>
+        <li><code>GET /wallets</code> — List semua wallet lokal</li>
+        <li><code>POST /wallets/create</code> — Buat wallet baru</li>
+        <li><code>POST /wallets/import</code> — Import wallet dari JSON</li>
+        <li><code>GET /wallets/:name</code> — Detail wallet</li>
+        <li><code>GET /wallets/:name/history</code> — Riwayat transaksi wallet</li>
+        <li><code>GET /wallets/:name/export</code> — Export wallet ke JSON</li>
+        <li><code>POST /wallets/:name/delete</code> — Hapus wallet</li>
+      </ul>
+    </div>
+
+    <!-- Miner API -->
+    <div class="card-light">
+      <h4>⛏️ Miner API</h4>
+      <ul>
+        <li><code>POST /miner/start</code> — Mulai mining untuk address tertentu</li>
+        <li><code>POST /miner/stop</code> — Stop mining untuk address tertentu</li>
+      </ul>
+    </div>
+
+    <!-- Explorer API -->
+    <div class="card-light">
+      <h4>🔍 Explorer API</h4>
+      <ul>
+        <li><code>GET /explorer</code> — Tampilan block explorer</li>
+        <li><code>GET /block/:index</code> — Detail block berdasarkan index</li>
+        <li><code>GET /tx/:hash</code> — Detail transaksi berdasarkan hash</li>
+        <li><code>GET /address/:addr</code> — Detail address (saldo + transaksi)</li>
+        <li><code>GET /search?q=...</code> — Pencarian block, tx, atau address</li>
+        <li><code>GET /api/suggest?q=...</code> — Auto-suggest untuk search</li>
+      </ul>
+    </div>
+
+    <!-- Stats API -->
+    <div class="card-light">
+      <h4>📊 Stats API</h4>
+      <ul>
+        <li><code>GET /stats</code> — Ringkasan chain & mining stats</li>
+        <li><code>GET /peers</code> — Daftar peer nodes</li>
+        <li><code>GET /balance</code> — Halaman cek saldo wallet</li>
+      </ul>
+    </div>
+
+    <!-- Misc -->
+    <div class="card-light">
+      <h4>⚙️ Misc</h4>
+      <ul>
+        <li><code>GET /home</code> atau <code>GET /</code> — Halaman utama</li>
+        <li><code>GET /docs</code> — Halaman dokumentasi API</li>
+        <li><code>GET /contribute</code> — Panduan kontribusi</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

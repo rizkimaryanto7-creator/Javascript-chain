@@ -1,38 +1,76 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8">
-  <title>Wallets — JS-Chain</title>
+  <title>Wallets — JSChain</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap & FontAwesome -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style> body { background:#121212; color:#fff } </style>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background: #f5f7fa; color: #222; font-family: 'Inter', sans-serif; }
+    .navbar { background-color: #fff; border-bottom: 1px solid #ddd; }
+    h1, h4, h5 { font-weight: 600; }
+    .card-light { background: #fff; border: 1px solid #ddd; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
+    .btn-primary { background-color: #1877F2; border-color: #1877F2; font-weight: 600; }
+    .btn-primary:hover { background-color: #145dbf; border-color: #145dbf; }
+    .btn-success { font-weight: 600; }
+    .list-group-item { background: #fff; border: 1px solid #ddd; }
+    .mono { font-family: monospace; word-break: break-all; }
+  </style>
 </head>
-<body class="p-4">
-<div class="container">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>💼 Wallets</h1>
-    <div>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light px-3">
+    <a class="navbar-brand fw-bold" href="/">⚡ JSChain Wallets</a>
+    <div class="ms-auto">
       <a class="btn btn-outline-info me-2" href="/miner">Miner</a>
-      <a class="btn btn-outline-light" href="/explorer">Explorer</a>
+      <a class="btn btn-outline-dark me-2" href="/explorer">Explorer</a>
+      <a class="btn btn-outline-warning me-2" href="/stats">Stats</a>
+      <a class="btn btn-outline-danger" href="/logout">Logout</a>
     </div>
-  </div>
+  </nav>
 
-  <div class="row g-4">
-    <div class="col-md-6">
-      <div class="card bg-dark">
-        <div class="card-body">
-          <h5 class="card-title">Create Wallet</h5>
+  <div class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h1>💼 Wallets</h1>
+      <!-- Tombol Connect MetaMask -->
+      <button class="btn btn-warning" onclick="connectMetaMask()">
+        <i class="fab fa-ethereum"></i> Connect MetaMask
+      </button>
+    </div>
+
+    <!-- Alerts -->
+    <% if (successMessage) { %>
+      <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle"></i> <%= successMessage %>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    <% } %>
+    <% if (errorMessage) { %>
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-triangle"></i> <%= errorMessage %>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+    <% } %>
+
+    <div class="row g-4">
+      <!-- Create Wallet -->
+      <div class="col-md-6">
+        <div class="card-light p-4">
+          <h5 class="card-title mb-3">🆕 Create Wallet</h5>
           <form action="/wallets/create" method="POST">
             <div class="mb-3">
               <label class="form-label">Wallet Name</label>
               <input type="text" name="name" class="form-control" placeholder="e.g., myminer" required>
             </div>
-            <button class="btn btn-success">Create</button>
+            <button class="btn btn-success w-100">Create</button>
           </form>
         </div>
-      </div>
-      <div class="card bg-dark mt-4">
-        <div class="card-body">
-          <h5 class="card-title">Import Wallet (JSON)</h5>
+
+        <!-- Import Wallet -->
+        <div class="card-light p-4">
+          <h5 class="card-title mb-3">📥 Import Wallet</h5>
           <form action="/wallets/import" method="POST">
             <div class="mb-3">
               <label class="form-label">Name</label>
@@ -40,33 +78,116 @@
             </div>
             <div class="mb-3">
               <label class="form-label">Wallet JSON</label>
-              <textarea name="walletJson" class="form-control" rows="6" placeholder='{"publicKey":"...","privateKey":"..."}' required></textarea>
+              <textarea name="walletJson" class="form-control mono" rows="6" placeholder='{"address":"0x...","privateKey":"..."}'></textarea>
             </div>
-            <button class="btn btn-primary">Import</button>
+            <button class="btn btn-primary w-100">Import</button>
           </form>
-          <small class="text-warning d-block mt-2">Jangan bagikan private key ke siapa pun.</small>
+          <small class="text-danger d-block mt-2">⚠️ Jangan bagikan private key ke siapa pun.</small>
+        </div>
+      </div>
+
+      <!-- Wallet List -->
+      <div class="col-md-6">
+        <div class="card-light p-4">
+          <h4 class="mb-3">📂 Your Local Wallets</h4>
+          <div class="list-group">
+            <% if (wallets.length === 0) { %>
+              <div class="alert alert-secondary">Belum ada wallet lokal. Silakan buat atau import.</div>
+            <% } else { %>
+              <% wallets.forEach(w => { %>
+                <div class="list-group-item d-flex justify-content-between align-items-center mb-2">
+                  <div>
+                    <div class="fw-bold"><i class="fas fa-wallet text-success"></i> <%= w.name %></div>
+                    <div class="small text-muted mono">
+                      <%= w.address %>
+                      <button class="btn btn-sm btn-outline-info ms-2" onclick="navigator.clipboard.writeText('<%= w.address %>')">Copy</button>
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center">
+                    <a class="btn btn-sm btn-primary me-2" href="/wallets/<%= encodeURIComponent(w.name) %>">Open</a>
+                    <a class="btn btn-sm btn-outline-warning me-2" href="/wallets/<%= encodeURIComponent(w.name) %>/export">Export</a>
+                    <form action="/wallets/<%= encodeURIComponent(w.name) %>/delete" method="POST" class="d-inline" onsubmit="return confirm('Yakin hapus wallet <%= w.name %>?')">
+                      <button class="btn btn-sm btn-outline-danger">Delete</button>
+                    </form>
+                    <button class="btn btn-sm btn-success ms-2" onclick="startMining('<%= w.address %>')">⛏️ Mine</button>
+                    <button class="btn btn-sm btn-danger ms-2" onclick="stopMining('<%= w.address %>')">🛑 Stop</button>
+                  </div>
+                </div>
+              <% }) %>
+            <% } %>
+          </div>
         </div>
       </div>
     </div>
-
-    <div class="col-md-6">
-      <h4 class="mb-3">Your Wallets</h4>
-      <div class="list-group">
-        <% wallets.forEach(w => { %>
-          <div class="list-group-item list-group-item-action bg-dark text-white d-flex justify-content-between align-items-center">
-            <div>
-              <div class="fw-bold"><%= w.name %></div>
-              <div class="small text-muted" style="word-break:break-all;"><%= w.publicKey %></div>
-            </div>
-            <div class="d-flex align-items-center">
-              <a class="btn btn-sm btn-primary me-2" href="/wallets/<%= encodeURIComponent(w.name) %>">Open</a>
-              <a class="btn btn-sm btn-outline-warning" href="/wallets/<%= encodeURIComponent(w.name) %>/export">Export</a>
-            </div>
-          </div>
-        <% }) %>
-      </div>
-    </div>
   </div>
-</div>
+
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Mining control via API
+    async function startMining(addr) {
+      try {
+        const res = await fetch('/miner/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minerAddress: addr })
+        }).then(r => r.json());
+        if (res.ok) {
+          alert(`⛏️ Mining started for ${addr}`);
+        } else {
+          alert(`⚠️ Mining error: ${res.msg || res.error}`);
+        }
+      } catch (e) {
+        alert("❌ Failed to start mining: " + e.message);
+      }
+    }
+
+    async function stopMining(addr) {
+      try {
+        const res = await fetch('/miner/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ minerAddress: addr })
+        }).then(r => r.json());
+        if (res.ok) {
+          alert(`🛑 Mining stopped for ${addr}`);
+        } else {
+          alert(`⚠️ Stop error: ${res.msg || res.error}`);
+        }
+      } catch (e) {
+        alert("❌ Failed to stop mining: " + e.message);
+      }
+    }
+
+    // Connect MetaMask
+    async function connectMetaMask() {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+          const account = accounts[0];
+          alert("✅ Connected to MetaMask: " + account);
+
+          // Kirim ke backend kalau perlu
+          await fetch('/metamask/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: account })
+          }).then(r => r.json())
+            .then(res => {
+              if (res.ok) {
+                console.log("Server acknowledged MetaMask connection:", res);
+              } else {
+                console.warn("Server error:", res);
+              }
+            });
+
+        } catch (err) {
+          alert("❌ Connection failed: " + err.message);
+        }
+      } else {
+        alert("⚠️ MetaMask tidak terdeteksi. Install extension di browser.");
+      }
+    }
+  </script>
 </body>
 </html>

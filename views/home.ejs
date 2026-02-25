@@ -5,121 +5,212 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JavaScript-chain</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
   <style>
-    body {
-      background-color: #121212;
-      color: #f1f1f1;
-    }
-    .hero {
-      background: linear-gradient(to right, #4f46e5, #9333ea);
-      padding: 3rem;
-      text-align: center;
-      color: white;
-    }
-    .btn-custom {
-      margin: 0.5rem;
-    }
-    .feature-card {
-      background-color: #1e1e1e;
-      border: 1px solid #333;
-      border-radius: 8px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-    footer {
-      border-top: 1px solid #333;
-      padding: 1rem;
-      text-align: center;
-      font-size: 0.9rem;
+    body { background-color: #ffffff; color: #333333; font-family: 'Inter', sans-serif; }
+    .navbar { border-bottom: 1px solid #ddd; }
+    .hero { background: linear-gradient(135deg, #1877F2, #145dbf); width: 100%; padding: 2.5rem 1rem; text-align: center; color: white; }
+    .stats-card { background-color: #f8f9fa; border-radius: 8px; padding: 1rem; text-align: center; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .stats-card h3 { color: #1877F2; font-weight: bold; }
+    .sidebar { background-color: #f8f9fa; padding: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    footer { border-top: 1px solid #ddd; padding: 1rem; text-align: center; font-size: 0.9rem; background-color: #f1f1f1; }
+    table { color: #333333; }
+    table thead { background-color: #f1f1f1; }
+    table tbody tr:hover { background-color: #f9f9f9; }
+    .btn-primary { background-color: #1877F2; border-color: #1877F2; }
+    .btn-primary:hover { background-color: #145dbf; border-color: #145dbf; }
+    .text-primary { color: #1877F2 !important; }
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 1.6rem; }
+      .hero p { font-size: 0.95rem; }
+      table { font-size: 0.85rem; }
     }
   </style>
 </head>
 <body>
 
-  <div class="hero">
-    <h1 class="display-4 fw-bold">JavaScript-chain</h1>
-    <p class="lead">Blockchain modular yang bisa ditambang langsung dari HP — ringan, terbuka, dan global.</p>
-    <div class="d-flex justify-content-center flex-wrap mt-3">
-      <a href="/miner" class="btn btn-light btn-custom">🔧 Mulai Menambang</a>
-      <a href="/explorer" class="btn btn-outline-light btn-custom">🌐 Lihat Explorer</a>
-      <a href="/wallets" class="btn btn-outline-info btn-custom">🧠 Cek Wallet</a>
-      <a href="/send" class="btn btn-outline-success btn-custom">💸 Kirim Transaksi</a>
-      <a href="/balance" class="btn btn-outline-warning btn-custom">💰 Cek Saldo</a>
-      <a href="/peers" class="btn btn-outline-secondary btn-custom">🌐 Peer Nodes</a>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="/">⚡ JavaScript-chain</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item"><a class="nav-link" href="/explorer">Explorer</a></li>
+          <li class="nav-item"><a class="nav-link" href="/wallets">Wallets</a></li>
+          <li class="nav-item"><a class="nav-link" href="/miner">Miner</a></li>
+          <li class="nav-item"><a class="nav-link" href="/stats">Stats</a></li>
+          <li class="nav-item"><a class="nav-link" href="/docs">Docs</a></li>
+          <li class="nav-item"><a class="nav-link" href="/contribute">Contribute</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero mt-5">
+    <h1 class="fw-bold">JavaScript-chain</h1>
+    <p class="lead">JavaScript-chain is a blockchain project designed to be extremely lightweight and run on low-end devices, including older laptops. The project uses the Proof of Work (PoW) algorithm as its consensus mechanism.</p>
+    <form action="/search" method="GET" class="d-flex flex-column flex-sm-row justify-content-center align-items-center mt-4 w-100 px-3">
+      <input type="text" name="q" id="searchInput" class="form-control mb-2 mb-sm-0 me-sm-2 w-100 text-center"
+             placeholder="Search block, tx, or address" autocomplete="off">
+      <button class="btn btn-primary w-100 w-sm-auto">🔍 Search</button>
+    </form>
+    <div id="suggestions" class="bg-light text-dark mt-2 rounded"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="container my-5">
+    <div class="row justify-content-center text-center">
+      <div class="col-10 col-sm-6 col-md-3 mx-auto">
+        <div class="stats-card">
+          <i class="fas fa-cube fa-2x mb-2 text-primary"></i>
+          <h6>Latest Block</h6>
+          <h3><%= typeof latestBlock !== 'undefined' ? latestBlock : 'N/A' %></h3>
+        </div>
+      </div>
+      <div class="col-10 col-sm-6 col-md-3 mx-auto">
+        <div class="stats-card">
+          <i class="fas fa-random fa-2x mb-2 text-success"></i>
+          <h6>Transactions</h6>
+          <h3><%= typeof txCount !== 'undefined' ? txCount : 'N/A' %></h3>
+        </div>
+      </div>
+      <div class="col-10 col-sm-6 col-md-3 mx-auto">
+        <div class="stats-card">
+          <i class="fas fa-wallet fa-2x mb-2 text-warning"></i>
+          <h6>Active Wallets</h6>
+          <h3><%= typeof walletCount !== 'undefined' ? walletCount : 'N/A' %></h3>
+        </div>
+      </div>
+      <div class="col-10 col-sm-6 col-md-3 mx-auto">
+        <div class="stats-card">
+          <i class="fas fa-network-wired fa-2x mb-2 text-secondary"></i>
+          <h6>Peers</h6>
+          <h3><%= typeof peerCount !== 'undefined' ? peerCount : 'N/A' %></h3>
+        </div>
+      </div>
+      <div class="col-10 col-sm-6 col-md-3 mx-auto">
+        <div class="stats-card">
+          <i class="fas fa-tachometer-alt fa-2x mb-2 text-danger"></i>
+          <h6>Difficulty</h6>
+          <h3><%= typeof difficulty !== 'undefined' ? difficulty : 'N/A' %></h3>
+        </div>
+      </div>
+      <div class="col-10 col-sm-6 col-md-3 mx-auto">
+        <div class="stats-card">
+          <i class="fas fa-coins fa-2x mb-2 text-info"></i>
+          <h6>Total Supply</h6>
+          <h3><%= typeof totalSupply !== 'undefined' ? totalSupply : 'N/A' %></h3>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="container py-5">
-    <section class="mb-5 text-center">
-      <h2 class="mb-3">Tentang JavaScript-chain</h2>
-      <p>JavaScript-chain adalah blockchain Layer 1 yang dirancang untuk inklusivitas dan aksesibilitas. Dibangun dengan modularitas tinggi, bisa dijalankan dan ditambang langsung dari perangkat mobile seperti Termux, APK, atau UserLAnd.</p>
-    </section>
-
-    <section class="mb-5">
-      <h2 class="text-center mb-3">Visi & Misi</h2>
-      <div class="row justify-content-center">
-        <div class="col-md-8">
-          <p><strong>Visi:</strong> Membangun ekosistem blockchain yang ringan, terbuka, dan bisa diakses siapa saja dari perangkat apapun.</p>
-          <ul>
-            <li>Desentralisasi nyata dari mobile</li>
-            <li>Developer empowerment melalui modularitas</li>
-            <li>Ekosistem terbuka untuk plugin, smart contract, dan governance</li>
-          </ul>
+  <!-- Dashboard -->
+  <div class="container my-5">
+    <div class="row justify-content-center">
+      <!-- Main Content -->
+      <div class="col-md-8">
+        <h2 class="mb-4 text-center">📊 New Transaction</h2>
+        <div class="table-responsive mx-auto" style="max-width:100%;">
+          <table class="table table-hover text-center">
+            <thead>
+              <tr>
+                <th>Tx Hash</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Amount</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% if (typeof transactions !== 'undefined' && transactions.length > 0) { %>
+                <% transactions.slice(0,10).forEach(function(tx){ %>
+                  <tr>
+                    <td><a href="/tx/<%= tx.hash %>" class="text-primary"><%= tx.hash.substring(0,12) %>...</a></td>
+                    <td><a href="/address/<%= tx.from %>" class="text-dark"><%= tx.from %></a></td>
+                    <td><a href="/address/<%= tx.to %>" class="text-dark"><%= tx.to %></a></td>
+                    <td><%= tx.amount %> JS</td>
+                    <td><%= tx.time %></td>
+                  </tr>
+                <% }) %>
+              <% } else { %>
+                <tr><td colspan="5" class="text-center">No transaction</td></tr>
+              <% } %>
+            </tbody>
+          </table>
         </div>
       </div>
-    </section>
 
-    <section class="mb-5">
-      <h2 class="text-center mb-4">Fitur Utama</h2>
-      <div class="row">
-        <div class="col-md-4">
-          <div class="feature-card">
-            <h5>🔗 Modular Node</h5>
-            <p>Bisa di-extend dan di-audit oleh developer global.</p>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="feature-card">
-            <h5>📱 Mobile Mining</h5>
-            <p>Termux, APK, dan UserLAnd ready untuk penambangan ringan.</p>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="feature-card">
-            <h5>🌐 Explorer Publik</h5>
-            <p>Transparansi blok dan transaksi secara real-time.</p>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="feature-card">
-            <h5>🧠 Wallet Management</h5>
-            <p>Kelola address, saldo, dan transaksi dengan aman.</p>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <div class="feature-card">
-            <h5>🛠️ Plugin System</h5>
-            <p>Siap untuk smart contract dan governance komunitas.</p>
-          </div>
+      <!-- Sidebar -->
+      <div class="col-md-4 mt-4 mt-md-0">
+        <div class="sidebar mx-auto text-center" style="max-width:400px;">
+          <h4 class="mb-3">🔧 Tools</h4>
+          <a href="/miner" class="btn btn-outline-dark w-100 mb-2">start mining</a>
+          <a href="/wallets" class="btn btn-outline-primary w-100 mb-2">Check Wallet</a>
+          <a href="/send" class="btn btn-outline-success w-100 mb-2">Send Transaction</a>
+          <a href="/balance" class="btn btn-outline-warning w-100 mb-2">Check Balance</a>
+          <a href="/peers" class="btn btn-outline-secondary w-100 mb-2">Peer Nodes</a>
+          <a href="/docs" class="btn btn-outline-info w-100 mb-2">API Docs</a>
         </div>
       </div>
-    </section>
-
-    <section class="mb-5 text-center">
-      <h2 class="mb-3">Untuk Developer</h2>
-      <p>JavaScript-chain sepenuhnya open-source dan siap dikembangkan bersama. Bergabunglah di komunitas kami dan bantu bangun masa depan blockchain yang inklusif.</p>
-      <div class="d-flex justify-content-center flex-wrap">
-        <a href="https://github.com/jscript-chain" class="btn btn-outline-light btn-custom">📦 GitHub Repo</a>
-        <a href="/docs" class="btn btn-outline-secondary btn-custom">📚 Dokumentasi & SDK</a>
-        <a href="/contribute" class="btn btn-outline-success btn-custom">🤝 Cara Kontribusi</a>
-      </div>
-    </section>
+    </div>
   </div>
 
-  <footer class="bg-dark text-light">
-    <p>&copy; 2025 JavaScript-chain. Dibangun dengan semangat desentralisasi dari Gunungpati.</p>
-    <p>Versi chain: <%= chainVersion %> | Hash terakhir: <%= latestHash %></p>
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2026 Copyright of JavaScript-chain Home | Here are some features that make JavaScript-chain very lightweight:
+
+
+1. _JavaScript implementation_: JavaScript-chain is written in JavaScript, making it capable of running on almost any device with a web browser.
+
+2. _Simple architecture_: The project has a simple architecture and doesn't require many resources to run.
+
+3. _Lightweight PoW algorithm_: JavaScript-chain uses a lightweight PoW algorithm that doesn't require a lot of computation to solve blocks.
+
+4. _No GPU required_: JavaScript-chain can run using only a CPU, no powerful GPU is required.
+
+As a result, JavaScript-chain is well-suited for running on low-end devices, including older laptops. The project can also be used as a learning tool to understand blockchain and PoW concepts. However, please note that JavaScript-chain is still in development and not ready for production use. If you want to use blockchain for production purposes, it's recommended to use a more stable and secure blockchain.</p>
+    <p>
+      Versi chain: <%= typeof chainVersion !== 'undefined' ? chainVersion : 'v1.0.0' %>
+      | Last Hash: <%= typeof latestHash !== 'undefined' ? latestHash : 'N/A' %>
+      | Status Node: <%= typeof nodeStatus !== 'undefined' ? nodeStatus : 'Online' %>
+    </p>
+    <div>
+      <a href="https://github.com/rizkimaryanto7-creator" class="text-dark me-3"><i class="fab fa-github"></i></a>
+      <a href="/docs" class="text-dark me-3"><i class="fas fa-book"></i></a>
+      <a href="/community" class="text-dark"><i class="fas fa-users"></i></a>
+    </div>
   </footer>
 
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Auto-suggest Search -->
+  <script>
+    const searchInput = document.getElementById('searchInput');
+    const suggestions = document.getElementById('suggestions');
+
+    searchInput.addEventListener('input', async () => {
+      const q = searchInput.value.trim();
+      if (!q) { suggestions.innerHTML = ''; return; }
+      try {
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          suggestions.innerHTML = '<ul class="list-group">' +
+            data.map(item => `<li class="list-group-item"><a href="${item.url}">${item.label}</a></li>`).join('') +
+            '</ul>';
+        } else {
+          suggestions.innerHTML = '';
+        }
+      } catch {
+        suggestions.innerHTML = '';
+      }
+    });
+  </script>
 </body>
 </html>

@@ -2,275 +2,226 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-let USE_EC = true, ec;
-try {
-  const EC = require('elliptic').ec;
-  ec = new EC('secp256k1');
-} catch (e) {
-  USE_EC = false;
-  console.warn('⚠️ elliptic not installed. Using HMAC fallback.');
-}
-
-function signTransaction(privateKeyHex, data) {
-  const payload = JSON.stringify(data);
-  if (USE_EC) {
-    const key = ec.keyFromPrivate(privateKeyHex, 'hex');
-    const hash = crypto.createHash('sha256').update(payload).digest();
-    return key.sign(hash).toDER('hex');
-  } else {
-    return crypto.createHmac('sha256', privateKeyHex).update(payload).digest('hex');
-  }
-}
-
-function verifySignature(publicKeyHex, data, signatureHex) {
-  if (data.from === 'SYSTEM') return true;
-  const payload = JSON.stringify(data);
-  if (USE_EC) {
-    try {
-      const key = ec.keyFromPublic(publicKeyHex, 'hex');
-      const hash = crypto.createHash('sha256').update(payload).digest();
-      return key.verify(hash, signatureHex);
-    } catch {
-      return false;
-    }
-  } else {
-    const check = crypto.createHmac('sha256', publicKeyHex).update(payload).digest('hex');
-    return check === signatureHex;
-  }
-}
-
-class Block {
-  constructor(index, timestamp, transactions, previousHash, nonce = 0) {
-    this.index = index;
-    this.timestamp = timestamp;
-    this.transactions = transactions;
-    this.previousHash = previousHash;
-    this.nonce = nonce;
-    this.hash = this.calculateHash();
-  }
-
-  calculateHash() {
-    return crypto.createHash('sha256')
-      .update(this.previousHash + JSON.stringify(this.transactions) + this.nonce)
-      .digest('hex');
-  }
-
-  mineBlock(difficulty) {
-    const prefix = '0'.repeat(difficulty);
-    while (!this.hash.startsWith(prefix)) {
-      this.nonce++;
-      this.hash = this.calculateHash();
-    }
-  }
-}
+// Variabel ini akan diupdate oleh server.js lewat metode setDifficulty
+let difficultyPrefix = '00'; 
 
 class Blockchain {
-  constructor(devPublicKey, config) {
-    this.difficulty = config.difficulty;
-    this.totalSupply = config.totalSupply;
-    this.premine = Math.floor(config.premineRatio * this.totalSupply);
-    this.baseReward = config.baseReward;
-    this.minReward = config.minReward;
-    this.halvingIntervalBlocks = config.halvingIntervalBlocks;
-
-    this.chain = [this.createGenesisBlock(devPublicKey)];
+  constructor(minerAddress, config) {
+    this.chainPath = path.join(process.cwd(), 'chain.json');
+    this.config = config;
+    this.minerAddress = minerAddress;
     this.pendingTransactions = [];
-    this.wallets = {};
-    this.minedCoins = this.premine;
-
-    this.loadChain();
   }
 
-  createGenesisBlock(devPublicKey) {
-    const txs = [{ from: 'SYSTEM', to: devPublicKey, amount: this.premine }];
-    const b = new Block(0, Date.now(), txs, '0'.repeat(64), 0);
-    b.hash = b.calculateHash();
-    return b;
+  // ================= SETTER DIFFICULTY =================
+  // Dipanggil dari server.js agar chain.js tahu prefix terbaru
+  setDifficulty(prefix) {
+    difficultyPrefix = prefix;
   }
+
+  // ================= HASH FUNCTION (SINKRON) =================
+  calculateHash(index, previousHash, timestamp, transactions, nonce) {
+    // Pastikan transaksi selalu di-stringify dengan format yang sama
+    const txData = JSON.stringify(transactions);
+    
+    // Menggunakan Template Literals untuk memastikan tidak ada spasi liar
+    const data = `${index}${previousHash}${timestamp}${txData}${nonce}`;
+    
+    return crypto.createHash('sha256').update(data).digest('hex');
+  }
+
+  // ================= LOAD CHAIN =================
+  loadChain() {
+    try {
+      if (fs.existsSync(this.chainPath)) {
+        const data = fs.readFileSync(this.chainPath, 'utf8');
+        return JSON.parse(data);
+      }
+    } catch (e) {
+      console.error("⚠️ Error loading chain.json, using Genesis:", e.message);
+    }
+    
+    const genesis = this.createGenesisBlock();
+    this.saveChain([genesis]);
+    return [genesis];
+  }
+
+  get chain() {
+    return this.loadChain();
+  }
+
+  saveChain(chain) {
+    try {
+      fs.writeFileSync(this.chainPath, JSON.stringify(chain, null, 2));
+    } catch (e) {
+      console.error("❌ Failed to save chain.json:", e.message);
+    }
+  }
+
+  // ================= GENESIS =================
+  createGenesisBlock() {
+  const premineAmount = Math.floor(this.config.totalSupply * this.config.premineRatio);
+  const premineTx = {
+    from: "SYSTEM",
+    to: this.config.premineAddress,
+    amount: premineAmount,
+    timestamp: 1700000000000 // fixed timestamp biar konsisten
+  };
+
+  return {
+    index: 0,
+    timestamp: 1700000000000,
+    transactions: [premineTx],
+    previousHash: "0",
+    nonce: 0,
+    hash: "GENESIS_BLOCK_DATA"
+  };
+}
 
   getLatestBlock() {
-    return this.chain[this.chain.length - 1];
+    const chain = this.loadChain();
+    return chain[chain.length - 1];
   }
 
-  getCurrentReward(height = this.chain.length) {
-    const halvings = Math.floor(height / this.halvingIntervalBlocks);
-    const reward = this.baseReward / Math.pow(2, halvings);
-    return reward >= this.minReward ? reward : this.minReward;
+  getCurrentReward() {
+    return this.config.baseReward || 100;
   }
 
-  adjustDifficulty() {
-    const targetTime = 120000;
-    const lastBlock = this.getLatestBlock();
-    const prevBlock = this.chain[this.chain.length - 2];
-    if (!prevBlock) return;
+  // ================= ADD BLOCK =================
+  addBlockFromWorker(transactions, nonce, hash, minerAddress, timestamp) {
+    const chain = this.loadChain();
+    const latestBlock = chain[chain.length - 1];
 
-    const actualTime = lastBlock.timestamp - prevBlock.timestamp;
-    if (actualTime < targetTime / 2) this.difficulty++;
-    else if (actualTime > targetTime * 2 && this.difficulty > 1) this.difficulty--;
+    // Jika transaksi datang dalam bentuk string, parse dulu
+    const txs = typeof transactions === "string" ? JSON.parse(transactions) : transactions;
 
-    console.log(`⛏️ Difficulty adjusted to ${this.difficulty} (block time: ${Math.floor(actualTime / 1000)}s)`);
+    const newBlock = {
+      index: chain.length,
+      timestamp: Number(timestamp),
+      transactions: txs,
+      previousHash: latestBlock.hash,
+      nonce: Number(nonce),
+      hash: hash
+    };
+
+    // Verifikasi ulang hash sebelum disimpan
+    const recalculatedHash = this.calculateHash(
+      newBlock.index,
+      newBlock.previousHash,
+      newBlock.timestamp,
+      newBlock.transactions,
+      newBlock.nonce
+    );
+
+    if (recalculatedHash !== hash) {
+      console.error("❌ Invalid block hash! (Mismatch)");
+      console.log(`Diterima: ${hash}`);
+      console.log(`Dihitung: ${recalculatedHash}`);
+      return false;
+    }
+
+    // Validasi difficulty
+    if (!hash.startsWith(difficultyPrefix)) {
+      console.error(`❌ Block does not meet difficulty! Need: ${difficultyPrefix}`);
+      return false;
+    }
+
+    chain.push(newBlock);
+    this.pendingTransactions = []; // Bersihkan pool transaksi
+    this.saveChain(chain);
+    
+    console.log(`⛓ Block #${newBlock.index} added successfully by ${minerAddress}`);
+    return true;
   }
 
-  createWallet(name, walletObj) {
-    this.wallets[name] = walletObj;
+  // ================= WORK TX =================
+  buildWorkTransactions(minerAddress) {
+    const rewardTx = {
+      from: "SYSTEM",
+      to: minerAddress,
+      amount: this.getCurrentReward(),
+      timestamp: Date.now() // Tambahkan timestamp unik agar hash beda tiap percobaan
+    };
+    return [rewardTx, ...this.pendingTransactions];
   }
 
-  getBalance(publicKey) {
+  // ================= BALANCE =================
+  getBalance(address) {
+    const chain = this.loadChain();
     let balance = 0;
-    for (const block of this.chain) {
+    for (const block of chain) {
       for (const tx of block.transactions) {
-        if (tx.to === publicKey) balance += tx.amount;
-        if (tx.from === publicKey) balance -= tx.amount;
+        if (tx.to === address) balance += tx.amount;
+        if (tx.from === address) balance -= tx.amount;
       }
     }
     return balance;
   }
 
-  getTransactionsByWallet(publicKey) {
+  // ================= TRANSACTION LOOKUP =================
+  getTransactionsByWallet(address) {
+    const chain = this.loadChain();
     const txs = [];
-    for (const block of this.chain) {
-      for (const tx of block.transactions) {
-        if (tx.from === publicKey || tx.to === publicKey) {
-          txs.push({
-            blockIndex: block.index,
-            from: tx.from,
-            to: tx.to,
-            amount: tx.amount,
-            timestamp: block.timestamp
-          });
+    chain.forEach((block, idx) => {
+      block.transactions.forEach(tx => {
+        if (tx.to === address || tx.from === address) {
+          txs.push({ ...tx, blockIndex: idx });
         }
-      }
-    }
+      });
+    });
     return txs;
   }
 
-  createTransaction(fromName, toPublicKey, amount) {
-    const sender = this.wallets[fromName];
-    if (!sender || amount <= 0 || this.getBalance(sender.publicKey) < amount) return;
-    const payload = {
-      from: sender.publicKey,
-      to: toPublicKey,
-      amount,
-      timestamp: Date.now()
-    };
-    payload.signature = signTransaction(sender.privateKey, payload);
-    this.pendingTransactions.push(payload);
-  }
-
-  buildWorkTransactions(minerAddress) {
-    const validTxs = [];
-    const failedTxs = [];
-
-    this.pendingTransactions.sort((a, b) => a.timestamp - b.timestamp);
-
-    for (const tx of this.pendingTransactions) {
-      const isValid = tx.from === 'SYSTEM' || verifySignature(tx.from, {
-        from: tx.from,
-        to: tx.to,
-        amount: tx.amount,
-        timestamp: tx.timestamp
-      }, tx.signature);
-
-      if (isValid) {
-        validTxs.push(tx);
-      } else {
-        console.warn(`⚠️ Invalid transaction skipped:`, tx);
-        failedTxs.push(tx);
-      }
-    }
-
-    const reward = this.getCurrentReward(this.chain.length);
-    if (this.minedCoins + reward > this.totalSupply) return null;
-
-    validTxs.push({ from: 'SYSTEM', to: minerAddress, amount: reward });
-    this.pendingTransactions = failedTxs;
-
-    return validTxs;
-  }
-
-  addBlockFromWorker(transactions, nonce, hash, minerAddress) {
-    const prev = this.getLatestBlock();
-    const expectedHash = crypto.createHash('sha256')
-      .update(prev.hash + JSON.stringify(transactions) + nonce)
-      .digest('hex');
-    const prefix = '0'.repeat(this.difficulty);
-    if (hash !== expectedHash || !hash.startsWith(prefix)) return false;
-
-    const rewardTx = transactions[transactions.length - 1];
-    if (!rewardTx || rewardTx.from !== 'SYSTEM' || rewardTx.to !== minerAddress) return false;
-    if (rewardTx.amount !== this.getCurrentReward(this.chain.length)) return false;
-    if (this.minedCoins + rewardTx.amount > this.totalSupply) return false;
-
-    for (const tx of transactions) {
-      if (tx.from !== 'SYSTEM' && !verifySignature(tx.from, {
-        from: tx.from,
-        to: tx.to,
-        amount: tx.amount,
-        timestamp: tx.timestamp
-      }, tx.signature)) {
-        console.warn(`❌ Invalid signature in block. Skipping block.`);
-        return false;
-      }
-    }
-
-    const newBlock = new Block(this.chain.length, Date.now(), transactions, prev.hash, nonce);
-    newBlock.hash = expectedHash;
-    this.chain.push(newBlock);
-    this.minedCoins += rewardTx.amount;
-    return true;
-  }
-
-  minePendingTransactions(minerName) {
-    const minerWallet = this.wallets[minerName];
-    if (!minerWallet) return;
-    const workTxs = this.buildWorkTransactions(minerWallet.publicKey);
-    if (!workTxs) return;
-    const block = new Block(this.chain.length, Date.now(), workTxs, this.getLatestBlock().hash);
-    block.mineBlock(this.difficulty);
-    const ok = this.addBlockFromWorker(workTxs, block.nonce, block.hash, minerWallet.publicKey);
-    if (ok) {
-      this.adjustDifficulty();
-      this.pendingTransactions = this.pendingTransactions.filter(tx => !workTxs.includes(tx));
-      return block;
-    }
-    return null;
-  }
-
-  getPendingTransactions() {
-    return this.pendingTransactions;
-  }
-
   getTransactionByHash(hash) {
-    for (const block of this.chain) {
+    const chain = this.loadChain();
+    for (let i = 0; i < chain.length; i++) {
+      const block = chain[i];
       for (const tx of block.transactions) {
-        const txHash = crypto.createHash('sha256').update(JSON.stringify(tx)).digest('hex');
-        if (txHash === hash) return { blockIndex: block.index, tx };
+        const txHash = crypto.createHash('sha256')
+          .update(JSON.stringify(tx))
+          .digest('hex');
+        if (txHash === hash) return { blockIndex: i, tx };
       }
     }
     return null;
   }
 
-  loadChain() {
-    const p = path.join(process.cwd(), 'chain.json');
-    try {
-      if (fs.existsSync(p)) {
-        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-        if (Array.isArray(data) && data.length > 0) {
-          this.chain = data.map(b => Object.assign(new Block(), b));
-          for (let i = 0; i < this.chain.length; i++) {
-            const blk = this.chain[i];
-            const calc = crypto.createHash('sha256')
-              .update(blk.previousHash + JSON.stringify(blk.transactions) + blk.nonce)
-              .digest('hex');
-            if (blk.hash !== calc) throw new Error(`Hash mismatch at block ${i}`);
-          }
-          console.log(`✅ Chain loaded with ${this.chain.length} blocks`);
-        }
-      }
-    } catch (e) {
-      console.warn('⚠️ Failed to load chain.json:', e.message);
-      this.chain = [this.chain[0]];
+  // ================= CREATE TX =================
+  createTransaction(wallet, toAddress, amount) {
+    if (amount <= 0) throw new Error("Invalid amount");
+    if (this.getBalance(wallet.publicKey) < amount) throw new Error("Insufficient balance");
+
+    const tx = {
+      from: wallet.publicKey,
+      to: toAddress,
+      amount: Number(amount),
+      timestamp: Date.now(),
+      hash: "" // Akan diisi di node/wallet
+    };
+
+    this.pendingTransactions.push(tx);
+    return tx;
+  }
+
+  // ================= VALIDATE FULL CHAIN =================
+  isChainValid() {
+    const chain = this.loadChain();
+    for (let i = 1; i < chain.length; i++) {
+      const current = chain[i];
+      const previous = chain[i - 1];
+
+      const recalculatedHash = this.calculateHash(
+        current.index,
+        current.previousHash,
+        current.timestamp,
+        current.transactions,
+        current.nonce
+      );
+
+      if (current.hash !== recalculatedHash) return false;
+      if (current.previousHash !== previous.hash) return false;
     }
+    return true;
   }
 }
 

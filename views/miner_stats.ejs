@@ -2,180 +2,276 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>JS-Chain Pro Miner Dashboard</title>
+  <title>JS-Chain Miner Dashboard</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    body { background-color: #121212; color: #fff; }
-    .core-fastest { background-color: #1e5128 !important; }
-    .toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 9999; }
-    .spinner-border-sm { width: 1rem; height: 1rem; }
+    body { background-color: #ffffff; color: #222; }
+    .card { background-color: #f9f9f9; border: 1px solid #ddd; }
+    .hash { font-family: monospace; font-size: 0.85rem; word-break: break-all; }
+    .mono { font-family: monospace; word-break: break-all; }
+    .cube { width: 25px; height: 25px; margin: 2px; background: #ccc; display: inline-block; border-radius: 4px; transition: background 0.3s; }
+    .cube.active { background: #0d6efd; }
+    .cube.found { background: #28a745; }
+    .hammer { width: 40px; height: 40px; background: url('https://cdn-icons-png.flaticon.com/512/1380/1380370.png') no-repeat center/contain; position: absolute; transition: all 0.2s ease; pointer-events: none; }
+    .hammer.hit { transform: translateY(10px) rotate(-20deg); }
+    #progressBar { height: 20px; }
   </style>
 </head>
 <body class="p-3">
 <div class="container">
   <h1 class="mb-4">⛏ JS-Chain Miner Dashboard</h1>
 
-  <div class="row mb-3">
-    <div class="col-md-6">
-      <label for="minerAddress" class="form-label">Miner Address</label>
-      <input type="text" id="minerAddress" class="form-control" placeholder="Paste your miner wallet address">
+  <!-- Mining Control -->
+  <div class="mb-4 card p-3">
+    <label for="minerAddress" class="form-label">Wallet Address</label>
+    <input type="text" id="minerAddress" class="form-control mono" placeholder="Masukkan public key wallet">
+    <button id="mineBtn" class="btn btn-success mt-2">⛏️ Start Mining</button>
+    <button id="stopBtn" class="btn btn-danger mt-2">🛑 Stop Mining</button>
+    <div class="progress mt-3">
+      <div id="progressBar" class="progress-bar bg-info" role="progressbar" style="width:0%">0%</div>
     </div>
-    <div class="col-md-6 d-flex align-items-end">
-      <button class="btn btn-success me-2" onclick="startMining()">Start Mining</button>
-      <button class="btn btn-danger" onclick="stopMining()">Stop Mining</button>
-    </div>
+    <pre id="mineOutput" class="mt-3"></pre>
   </div>
 
+  <!-- Status -->
   <div class="mb-3">
-    <span>Status: 
-      <span id="statusBadge" class="badge bg-secondary">Idle</span>
-      <span id="statusSpinner" class="spinner-border spinner-border-sm text-success ms-2 d-none"></span>
-    </span>
+    <span>Status: <span id="statusBadge" class="badge bg-secondary">Idle</span></span>
     <span class="ms-3">Height: <span id="height">0</span></span>
     <span class="ms-3">Difficulty: <span id="difficulty">0</span></span>
-    <span class="ms-3">Reward: <span id="reward">0</span></span>
+    <span class="ms-3">Total Shares: <span id="totalShares">0</span></span>
+    <span class="ms-3">Avg Block Time: <span id="avgBlockTime">0</span>s</span>
   </div>
 
-  <div class="mb-3">
-    ETA Next Block: <span id="eta">-</span>
+  <!-- Global Stats -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h4>Miner Count: <span id="minerCount">0</span></h4>
+      <canvas id="hashrateChart" height="100"></canvas>
+    </div>
   </div>
 
-  <h4>Total Hashrate: <span id="totalHashrate">0</span> H/s</h4>
-  <canvas id="hashrateChart" height="100"></canvas>
-
-  <h4 class="mt-4">Per-Core Stats</h4>
+  <!-- Miner Table -->
+  <h4 class="mt-4">Miner Stats</h4>
   <div class="table-responsive">
-    <table class="table table-dark table-striped align-middle" id="coreTable">
+    <table class="table table-striped align-middle" id="minerTable">
       <thead>
         <tr>
-          <th>Core</th>
-          <th>Hashrate (H/s)</th>
-          <th>Best Hash</th>
+          <th>Address</th>
+          <th>Shares</th>
+          <th>Blocks</th>
+          <th>Total Reward</th>
+          <th>Contribution %</th>
+          <th>Last Seen</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
+
+  <!-- Kubus Mining + Palu -->
+  <h4 class="mt-4">Mining Animation</h4>
+  <div class="position-relative" style="max-width:300px;">
+    <div class="d-flex flex-wrap mt-2" id="cubeContainer"></div>
+    <div id="hammer" class="hammer"></div>
+  </div>
+
+  <!-- Log Notifikasi -->
+  <h4 class="mt-4">Mining Log</h4>
+  <ul id="logList" class="list-group"></ul>
 </div>
 
-<div class="toast-container" id="toastContainer"></div>
+<!-- Notifikasi -->
+<div id="notifications" class="position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
 
 <script>
 let chart;
-let totalHashrateHistory = [];
-let difficultyHistory = [];
-let labels = [];
+let labels = [], sharesHistory = [], blocksHistory = [], rewardsHistory = [];
+const cubeContainer = document.getElementById('cubeContainer');
+const hammer = document.getElementById('hammer');
+let mining = false;
 
+// Render 100 kubus
+for (let i=0; i<100; i++) {
+  const div = document.createElement('div');
+  div.className = 'cube';
+  cubeContainer.appendChild(div);
+}
+const cubes = document.querySelectorAll('.cube');
+
+// Fetch mining stats
 async function fetchStats() {
-  const res = await fetch('/mining-stats');
-  const data = await res.json();
+  const minerRes = await fetch('/miner-stats');
+  const minerData = await minerRes.json();
 
-  document.getElementById('height').textContent = data.height;
-  document.getElementById('difficulty').textContent = data.difficulty;
-  document.getElementById('reward').textContent = data.reward;
-  document.getElementById('totalHashrate').textContent = data.totalHashrate;
+  const chainRes = await fetch('/chain-stats');
+  const chainData = await chainRes.json();
 
-  const isMining = Boolean(data.startedAt);
+  // Status & difficulty
+  document.getElementById('difficulty').textContent = minerData.difficulty;
+  const isMining = minerData.activeMiners && minerData.activeMiners.length > 0;
   document.getElementById('statusBadge').textContent = isMining ? 'Mining' : 'Idle';
   document.getElementById('statusBadge').className = `badge ${isMining ? 'bg-success' : 'bg-secondary'}`;
-  document.getElementById('statusSpinner').classList.toggle('d-none', !isMining);
 
-  // ETA kalkulasi sederhana
-  if (isMining && data.totalHashrate > 0) {
-    const target = Math.pow(16, (64 - data.difficulty)) / data.totalHashrate;
-    document.getElementById('eta').textContent = formatETA(target);
-  } else {
-    document.getElementById('eta').textContent = '-';
-  }
+  // Chain info
+  document.getElementById('height').textContent = chainData.height;
+  document.getElementById('minerCount').textContent = minerData.minerCount;
+  document.getElementById('totalShares').textContent = minerData.totalShares;
+  document.getElementById('avgBlockTime').textContent = (minerData.avgBlockTimeMs/1000).toFixed(1);
 
-  // Update chart datasets
+  // Chart update
   labels.push(new Date().toLocaleTimeString());
-  totalHashrateHistory.push(data.totalHashrate);
-  difficultyHistory.push(data.difficulty);
-  if (labels.length > 20) {
-    labels.shift(); totalHashrateHistory.shift(); difficultyHistory.shift();
-  }
+  sharesHistory.push(minerData.totalShares);
+  blocksHistory.push(chainData.blocks);
+  rewardsHistory.push(minerData.miners.reduce((sum,m)=>sum+m.totalReward,0));
+  if (labels.length > 20) { labels.shift(); sharesHistory.shift(); blocksHistory.shift(); rewardsHistory.shift(); }
   chart.data.labels = labels;
-  chart.data.datasets[0].data = totalHashrateHistory;
-  chart.data.datasets[1].data = difficultyHistory;
+  chart.data.datasets[0].data = sharesHistory;
+  chart.data.datasets[1].data = blocksHistory;
+  chart.data.datasets[2].data = rewardsHistory;
   chart.update();
 
-  // Per-core table update
-  const tbody = document.querySelector('#coreTable tbody');
+  // Miner table
+  const tbody = document.querySelector('#minerTable tbody');
   tbody.innerHTML = '';
-  let fastestCore = null, maxRate = 0;
-  for (const core in data.perCore) {
-    if (data.perCore[core] > maxRate) { maxRate = data.perCore[core]; fastestCore = core; }
-  }
-  for (const core in data.perCore) {
+  minerData.miners.forEach(m => {
     const tr = document.createElement('tr');
-    if (core == fastestCore && data.totalHashrate > 0) tr.classList.add('core-fastest');
-    tr.innerHTML = `<td>${core}</td><td>${data.perCore[core] || 0}</td><td>${data.bestHash[core] || '-'}</td>`;
+    tr.innerHTML = `<td class="mono">${m.address}</td>
+                    <td>${m.shares}</td>
+                    <td>${m.blocks}</td>
+                    <td>${m.totalReward}</td>
+                    <td>${m.contributionPercent}</td>
+                    <td>${m.lastSeen}</td>`;
     tbody.appendChild(tr);
-  }
-
-  // Toast notif block baru
-  if (data.lastBlockMinedAt && (!window._lastBlock || data.lastBlockMinedAt !== window._lastBlock)) {
-    if (window._lastBlock) showToast('✅ Block mined!', `At ${new Date(data.lastBlockMinedAt).toLocaleTimeString()}`);
-    window._lastBlock = data.lastBlockMinedAt;
-  }
-}
-
-function formatETA(seconds) {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const m = Math.floor(seconds / 60), s = Math.floor(seconds % 60);
-  if (m < 60) return `${m}m ${s}s`;
-  const h = Math.floor(m / 60);
-  return `${h}h ${m % 60}m`;
-}
-
-function startMining() {
-  const minerAddress = document.getElementById('minerAddress').value.trim();
-  if (!minerAddress) return alert('Isi miner address!');
-  fetch('/miner/start', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ minerAddress })
   });
 }
 
-function stopMining() { fetch('/miner/stop', { method: 'POST' }); }
-
-function showToast(title, body) {
-  const container = document.getElementById('toastContainer');
-  const toastEl = document.createElement('div');
-  toastEl.className = 'toast align-items-center text-bg-primary border-0 show';
-  toastEl.innerHTML = `
-    <div class="d-flex">
-      <div class="toast-body">
-        <strong>${title}</strong> ${body}
-      </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button>
-    </div>
-  `;
-  container.appendChild(toastEl);
-  setTimeout(() => toastEl.remove(), 5000);
+// Gerakan palu
+function moveHammerToCube(cube) {
+  const rect = cube.getBoundingClientRect();
+  const parentRect = cubeContainer.getBoundingClientRect();
+  hammer.style.left = (rect.left - parentRect.left) + "px";
+  hammer.style.top = (rect.top - parentRect.top - 30) + "px";
+  hammer.classList.add('hit');
+  setTimeout(() => hammer.classList.remove('hit'), 200);
 }
 
+// Mining function
+async function startMining() {
+  mining = true;
+  const pubKey = document.getElementById('minerAddress').value.trim();
+  if (!pubKey) { alert("Isi dulu wallet address!"); return; }
+
+  // Trigger backend start mining
+  await fetch('/miner/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ minerAddress: pubKey })
+  }).then(r => r.json()).then(res => {
+    showNotification(res.msg || "Mining started");
+  });
+
+  document.getElementById('mineOutput').textContent = "⛏️ Mining...";
+  const task = await fetch(`/mining-task?minerAddress=${pubKey}`).then(r => r.json());
+  let nonce = 0, hash = "";
+  while (mining) {
+    cubes.forEach(c => c.classList.remove('active'));
+    const cube = cubes[nonce % cubes.length];
+    cube.classList.add('active');
+    moveHammerToCube(cube);
+
+    const progress = (nonce % 100);
+    document.getElementById('progressBar').style.width = progress + "%";
+    document.getElementById('progressBar').textContent = progress + "%";
+
+    const data = JSON.stringify(task.transactions) + task.previousHash + task.timestamp + task.index;
+    const buffer = new TextEncoder().encode(data + nonce);
+    const digest = await crypto.subtle.digest("SHA-256", buffer);
+    hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (hash.startsWith(task.difficulty)) break;
+    nonce++;
+  }
+  if (!mining) return;
+  cubes[nonce % cubes.length].classList.add('found');
+
+  const block = {
+    index: task.index,
+    previousHash: task.previousHash,
+    transactions: task.transactions,
+    nonce,
+    hash,
+    minerAddress: pubKey,
+    signature: hash.slice(0,32)
+  };
+
+  const res = await fetch('/submit-block', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(block)
+  }).then(r => r.json());
+
+  document.getElementById('mineOutput').textContent = JSON.stringify(res, null, 2);
+
+  if (res.status === 'accepted') {
+    const rewardTotal = res.rewardTxs.reduce((sum, tx) => sum + tx.amount, 0);
+    showNotification(`✅ Block #${block.index} ditemukan oleh ${pubKey}, total reward: ${rewardTotal}`);
+    document.getElementById('progressBar').style.width = "0%";
+    document.getElementById('progressBar').textContent = "0%";
+  }
+}
+
+// Stop Mining
+document.getElementById('stopBtn').onclick = async () => {
+  mining = false;
+  const pubKey = document.getElementById('minerAddress').value.trim();
+  if (pubKey) {
+    await fetch('/miner/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ minerAddress: pubKey })
+    }).then(r => r.json()).then(res => {
+      showNotification(res.msg || "Mining stopped");
+    });
+  }
+};
+
+// Notifikasi toast
+function showNotification(msg) {
+  const notif = document.createElement('div');
+  notif.className = 'toast align-items-center text-bg-success border-0 show';
+  notif.innerHTML = `<div class="d-flex"><div class="toast-body">${msg}</div>
+    <button type="button" class="btn-close btn-close-dark me-2 m-auto" onclick="this.parentElement.parentElement.remove()"></button></div>`;
+  document.getElementById('notifications').appendChild(notif);
+
+  const li = document.createElement('li');
+  li.className = 'list-group-item';
+  li.textContent = msg;
+  document.getElementById('logList').appendChild(li);
+}
+
+// Init chart + stats loop
 window.onload = () => {
   chart = new Chart(document.getElementById('hashrateChart'), {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: 'Total Hashrate', data: totalHashrateHistory, borderColor: '#0d6efd', tension: 0.3, yAxisID: 'y' },
-        { label: 'Difficulty', data: difficultyHistory, borderColor: '#ffc107', tension: 0.3, yAxisID: 'y1' }
+        { label: 'Total Shares', data: sharesHistory, borderColor: '#0d6efd', tension: 0.3 },
+        { label: 'Blocks', data: blocksHistory, borderColor: '#28a745', tension: 0.3 },
+        { label: 'Total Reward', data: rewardsHistory, borderColor: '#ffc107', tension: 0.3 }
       ]
     },
     options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#333' } } },
       scales: {
-        x: { ticks: { color: '#ccc' } },
-        y: { position: 'left', ticks: { color: '#0d6efd' } },
-        y1: { position: 'right', ticks: { color: '#ffc107' }, grid: { drawOnChartArea: false } }
+        x: { ticks: { color: '#333' }, grid: { color: '#eee' } },
+        y: { ticks: { color: '#333' }, grid: { color: '#eee' } }
       }
     }
   });
-  setInterval(fetchStats, 1000);
+  setInterval(fetchStats, 2000);
+  document.getElementById('mineBtn').onclick = startMining;
 };
 </script>
 </body>

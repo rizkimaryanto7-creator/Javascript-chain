@@ -5,31 +5,36 @@
   <title>Address Explorer — JS-Chain</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { background:#121212; color:#fff }
-    .mono { font-family: monospace; word-break: break-all }
+    body { background:#ffffff; color:#000000; }
+    .mono { font-family: monospace; word-break: break-all; }
+    .card { border: 1px solid #ddd; }
+    .table thead th { background-color: #f8f9fa; }
   </style>
 </head>
 <body class="p-4">
 <div class="container">
+  <!-- Header -->
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>🧑 Address Explorer</h1>
+    <h1 class="text-primary">Address detail</h1>
     <div>
-      <a class="btn btn-outline-info me-2" href="/explorer">Explorer</a>
-      <a class="btn btn-outline-light" href="/">Home</a>
+      <a class="btn btn-outline-primary me-2" href="/explorer">Explorer</a>
+      <a class="btn btn-outline-secondary" href="/">Home</a>
     </div>
   </div>
 
-  <div class="card bg-dark mb-4">
+  <!-- Address Info -->
+  <div class="card mb-4">
     <div class="card-body">
       <div><strong>Address:</strong></div>
-      <div class="mono text-info"><%= addr %></div>
+      <div class="mono text-primary"><%= addr %></div>
       <div class="mt-2">Balance: <strong><%= balance %></strong></div>
       <div class="mt-2">Total Transactions: <strong><%= txs.length %></strong></div>
     </div>
   </div>
 
-  <h4>Transactions</h4>
-  <table class="table table-dark table-striped">
+  <!-- Transactions Table -->
+  <h4 class="mb-3">Transactions</h4>
+  <table class="table table-bordered table-striped">
     <thead>
       <tr>
         <th>Block</th>
@@ -46,7 +51,13 @@
           <td class="mono"><%= tx.from.slice(0, 12) %>...</td>
           <td class="mono"><%= tx.to.slice(0, 12) %>...</td>
           <td><%= tx.amount %></td>
-          <td><%= new Date(tx.timestamp).toLocaleString() %></td>
+          <td>
+            <% if (tx.timestamp) { %>
+              <%= new Date(tx.timestamp).toLocaleString() %>
+            <% } else { %>
+              <span class="text-danger">No Timestamp</span>
+            <% } %>
+          </td>
         </tr>
       <% }) %>
     </tbody>
